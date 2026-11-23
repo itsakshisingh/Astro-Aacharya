@@ -1,6 +1,24 @@
 const User = require("../models/user.model");
 const AstrologerProfile = require("../models/astrologerProfile.model");
 const Product = require("../models/product.model");
+const jwt = require("jsonwebtoken");
+
+// Helper to extract userId from req.body or Authorization Bearer token
+const extractUserId = (req) => {
+  if (req.body && req.body.userId) {
+    return req.body.userId;
+  }
+  if (req.headers && req.headers.authorization && req.headers.authorization.startsWith("Bearer ")) {
+    try {
+      const token = req.headers.authorization.split(" ")[1];
+      const decoded = jwt.verify(token, process.env.JWT_SECRET || "default_secret");
+      return decoded.id;
+    } catch (e) {
+      return null;
+    }
+  }
+  return null;
+};
 
 // 1. Upload Profile Image
 const uploadProfileImage = async (req, res) => {
@@ -15,7 +33,7 @@ const uploadProfileImage = async (req, res) => {
     const imageUrl = `/uploads/profiles/${req.file.filename}`;
     const fullUrl = `${req.protocol}://${req.get("host")}${imageUrl}`;
 
-    const { userId } = req.body;
+    const userId = extractUserId(req);
 
     if (userId) {
       const user = await User.findById(userId);
@@ -26,7 +44,10 @@ const uploadProfileImage = async (req, res) => {
         if (user.role === "astrologer") {
           await AstrologerProfile.findOneAndUpdate(
             { userId: user._id },
-            { profileImage: imageUrl }
+            {
+              profileImage: imageUrl,
+              "documents.profilePhoto": imageUrl,
+            }
           );
         }
       }
@@ -39,6 +60,7 @@ const uploadProfileImage = async (req, res) => {
         filename: req.file.filename,
         imageUrl: imageUrl,
         fullUrl: fullUrl,
+        linkedUserId: userId || null,
       },
     });
   } catch (error) {
@@ -186,6 +208,33 @@ const uploadKYCDoc = async (req, res) => {
     const fileUrl = `/uploads/kyc/${req.file.filename}`;
     const fullUrl = `${req.protocol}://${req.get("host")}${fileUrl}`;
 
+    const userId = extractUserId(req);
+    const documentType = (req.body.documentType || req.body.type || "").toLowerCase().trim();
+
+    if (userId) {
+      const updateData = {};
+      if (documentType === "aadhaar" || documentType === "id_proof") {
+        updateData["documents.aadhaarDocument"] = fileUrl;
+        updateData["kyc.aadhaarFrontImage"] = fileUrl;
+      } else if (documentType === "pan") {
+        updateData["documents.panDocument"] = fileUrl;
+        updateData["kyc.panCardImage"] = fileUrl;
+      } else if (documentType === "certificate") {
+        updateData["documents.certificateDocument"] = fileUrl;
+      } else if (documentType === "profilephoto" || documentType === "profile_photo") {
+        updateData["documents.profilePhoto"] = fileUrl;
+        updateData["profileImage"] = fileUrl;
+        await User.findByIdAndUpdate(userId, { profileImage: fileUrl });
+      }
+
+      if (Object.keys(updateData).length > 0) {
+        await AstrologerProfile.findOneAndUpdate(
+          { userId },
+          { $set: updateData }
+        );
+      }
+    }
+
     return res.status(200).json({
       success: true,
       message: "KYC document uploaded successfully",
@@ -194,6 +243,8 @@ const uploadKYCDoc = async (req, res) => {
         fileUrl: fileUrl,
         fullUrl: fullUrl,
         mimetype: req.file.mimetype,
+        linkedUserId: userId || null,
+        documentType: documentType || null,
       },
     });
   } catch (error) {

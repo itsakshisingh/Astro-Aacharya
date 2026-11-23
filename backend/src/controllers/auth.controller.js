@@ -395,6 +395,20 @@ const registerUser = async (req, res) => {
       state,
       country = "India",
       pincode,
+      // Astrologer Onboarding & Profile Details
+      experience,
+      experienceUnit,
+      skills,
+      specialization,
+      languages,
+      bio,
+      about,
+      chatPricePerMinute,
+      callPricePerMinute,
+      documents,
+      profileImage,
+      alternateMobile,
+      isProfileSubmitted,
     } = req.body;
 
     const userMobile = (mobile || mobileNumber || "").toString().trim();
@@ -470,6 +484,8 @@ const registerUser = async (req, res) => {
     const hashedPassword = await bcrypt.hash(password, 12);
     const status = role === "astrologer" ? "pending" : "active";
 
+    const effectivePhoto = profileImage || documents?.profilePhoto || null;
+
     const user = await User.create({
       fullName: fullName.trim(),
       countryCode: countryCode.trim(),
@@ -488,14 +504,43 @@ const registerUser = async (req, res) => {
       state: state || null,
       country: country || "India",
       pincode: pincode || null,
+      profileImage: effectivePhoto,
       role,
       status,
     });
 
+    let astroProfile = null;
     if (role === "astrologer") {
-      await AstrologerProfile.create({
+      const astroBio = bio || about || "";
+      const astroSkills = Array.isArray(skills) ? skills : [];
+      const astroLangs = Array.isArray(languages) ? languages : [];
+      const isSubmitted = Boolean(
+        isProfileSubmitted ||
+        documents?.aadhaarDocument ||
+        documents?.panDocument
+      );
+
+      astroProfile = await AstrologerProfile.create({
         userId: user._id,
         displayName: user.fullName,
+        experience: experience !== undefined ? Number(experience) : 0,
+        experienceUnit: experienceUnit || "years",
+        skills: astroSkills,
+        specialization: Array.isArray(specialization) ? specialization : astroSkills,
+        languages: astroLangs,
+        bio: astroBio,
+        chatPricePerMinute: chatPricePerMinute !== undefined ? Number(chatPricePerMinute) : 20,
+        callPricePerMinute: callPricePerMinute !== undefined ? Number(callPricePerMinute) : 25,
+        profileImage: effectivePhoto,
+        alternateMobile: alternateMobile || null,
+        documents: {
+          aadhaarDocument: documents?.aadhaarDocument || null,
+          panDocument: documents?.panDocument || null,
+          certificateDocument: documents?.certificateDocument || null,
+          profilePhoto: documents?.profilePhoto || effectivePhoto,
+        },
+        isProfileSubmitted: isSubmitted,
+        submissionStatus: isSubmitted ? "submitted" : "not_submitted",
         verificationStatus: "pending",
       });
     }
@@ -510,6 +555,7 @@ const registerUser = async (req, res) => {
           : `${role.replace("_", " ").toUpperCase()} registration successful!`,
       token,
       data: formatUserData(user),
+      profile: astroProfile,
     });
   } catch (error) {
     console.error("Register Error:", error);
