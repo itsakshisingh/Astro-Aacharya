@@ -142,14 +142,25 @@ const updateAstrologerStatus = async (req, res) => {
     user.status = status;
     await user.save();
 
-    // Update corresponding AstrologerProfile verificationStatus
+    // Update corresponding AstrologerProfile verificationStatus and submissionStatus
     let verificationStatus = "pending";
-    if (status === "active") verificationStatus = "verified";
-    if (status === "rejected") verificationStatus = "rejected";
+    let submissionStatus = "submitted";
+    let verifiedAt = null;
 
-    await AstrologerProfile.findOneAndUpdate(
+    if (status === "active") {
+      verificationStatus = "verified";
+      submissionStatus = "approved";
+      verifiedAt = new Date();
+    }
+    if (status === "rejected") {
+      verificationStatus = "rejected";
+      submissionStatus = "rejected";
+    }
+
+    const updatedProfile = await AstrologerProfile.findOneAndUpdate(
       { userId: user._id },
-      { verificationStatus }
+      { verificationStatus, submissionStatus, verifiedAt },
+      { new: true }
     );
 
     return res.status(200).json({
@@ -162,6 +173,8 @@ const updateAstrologerStatus = async (req, res) => {
         role: user.role,
         status: user.status,
         verificationStatus,
+        submissionStatus,
+        profile: updatedProfile,
       },
     });
   } catch (error) {

@@ -66,6 +66,13 @@ const updateAstrologerProfile = async (req, res) => {
     const { userId } = req.params;
 
     const {
+      // Basic Details (From Screenshot 1)
+      fullName,
+      email,
+      mobile,
+      gender,
+
+      // Expertise & Profile (From Screenshot 1 & 2)
       displayName,
       professionalTitle,
       bio,
@@ -76,12 +83,24 @@ const updateAstrologerProfile = async (req, res) => {
       specialization,
       skills,
       expertise,
+      languages,
+
+      // Price Per Minute (₹) (From Screenshot 2 - Chat & Call only, NO video)
+      chatPricePerMinute,
+      callPricePerMinute,
+
+      // Document Verification (From Screenshot 3)
+      documents,
+
+      // Submission Flag
+      isProfileSubmitted,
+
+      // Other Settings & Legacy Fields
       services,
       consultationFee,
       consultationUnit,
       freeConsultation,
       consultationModes,
-      languages,
       education,
       certifications,
       location,
@@ -96,41 +115,84 @@ const updateAstrologerProfile = async (req, res) => {
     } = req.body;
 
     // Check if Astrologer Profile exists
-    let profile = await AstrologerProfile.findOne({ userId });
+    let profile = await AstrologerProfile.findOne({
+      $or: [{ userId }, { _id: userId }],
+    });
+
+    // Check User
+    let user = await User.findById(userId);
+    if (!user && profile) {
+      user = await User.findById(profile.userId);
+    }
+
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: "Astrologer user not found",
+      });
+    }
+
+    // Sync basic details to User model if provided
+    if (fullName) user.fullName = fullName.trim();
+    if (email) user.email = email.trim().toLowerCase();
+    if (mobile) user.mobile = mobile.trim();
+    if (gender) user.gender = gender.toLowerCase();
+    if (profileImage) user.profileImage = profileImage;
+    if (documents?.profilePhoto) user.profileImage = documents.profilePhoto;
+    await user.save();
 
     if (!profile) {
-      // If profile does not exist yet, check if User exists and is an astrologer
-      const user = await User.findById(userId);
-      if (!user) {
-        return res.status(404).json({
-          success: false,
-          message: "User not found",
-        });
-      }
-
       profile = new AstrologerProfile({
-        userId,
+        userId: user._id,
         displayName: displayName || user.fullName,
       });
     }
 
-    // Update Profile Fields dynamically if provided
+    // Update Profile Fields dynamically
     if (displayName !== undefined) profile.displayName = displayName;
+    else if (fullName !== undefined) profile.displayName = fullName.trim();
+
     if (professionalTitle !== undefined) profile.professionalTitle = professionalTitle;
     if (bio !== undefined) profile.bio = bio;
     if (profileImage !== undefined) profile.profileImage = profileImage;
     if (coverImage !== undefined) profile.coverImage = coverImage;
-    if (experience !== undefined) profile.experience = experience;
+    if (experience !== undefined) profile.experience = Number(experience);
     if (experienceUnit !== undefined) profile.experienceUnit = experienceUnit;
     if (specialization !== undefined) profile.specialization = specialization;
     if (skills !== undefined) profile.skills = skills;
     if (expertise !== undefined) profile.expertise = expertise;
-    if (services !== undefined) profile.services = services;
-    if (consultationFee !== undefined) profile.consultationFee = consultationFee;
+    if (languages !== undefined) profile.languages = languages;
+
+    // Pricing (Chat & Call per minute)
+    if (chatPricePerMinute !== undefined) profile.chatPricePerMinute = Number(chatPricePerMinute);
+    if (callPricePerMinute !== undefined) profile.callPricePerMinute = Number(callPricePerMinute);
+    if (consultationFee !== undefined) profile.consultationFee = Number(consultationFee);
     if (consultationUnit !== undefined) profile.consultationUnit = consultationUnit;
     if (freeConsultation !== undefined) profile.freeConsultation = freeConsultation;
     if (consultationModes !== undefined) profile.consultationModes = consultationModes;
-    if (languages !== undefined) profile.languages = languages;
+
+    // Documents from Screenshot 3
+    if (documents !== undefined) {
+      profile.documents = {
+        ...profile.documents,
+        ...documents,
+      };
+      if (documents.profilePhoto) {
+        profile.profileImage = documents.profilePhoto;
+      }
+    }
+
+    // Submission flag when astrologer clicks "Submit for Verification"
+    if (isProfileSubmitted !== undefined) {
+      profile.isProfileSubmitted = Boolean(isProfileSubmitted);
+      if (isProfileSubmitted) {
+        profile.submissionStatus = "submitted";
+        profile.verificationStatus = "pending";
+      }
+    }
+
+    // Other settings
+    if (services !== undefined) profile.services = services;
     if (education !== undefined) profile.education = education;
     if (certifications !== undefined) profile.certifications = certifications;
     if (location !== undefined) profile.location = { ...profile.location, ...location };
@@ -145,15 +207,15 @@ const updateAstrologerProfile = async (req, res) => {
 
     await profile.save();
 
-    // Also update User profileImage if profileImage was updated
-    if (profileImage) {
-      await User.findByIdAndUpdate(userId, { profileImage });
-    }
+    const populated = await AstrologerProfile.findById(profile._id).populate(
+      "userId",
+      "fullName email mobile gender role status profileImage"
+    );
 
     return res.status(200).json({
       success: true,
       message: "Astrologer profile updated successfully",
-      data: profile,
+      data: populated,
     });
   } catch (error) {
     console.error("Update Profile Error:", error);

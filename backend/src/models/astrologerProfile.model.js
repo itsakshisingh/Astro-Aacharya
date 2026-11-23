@@ -130,8 +130,20 @@ const astrologerProfileSchema = new mongoose.Schema(
     ],
 
     // ==========================================
-    // CONSULTATION
+    // CONSULTATION & PER MINUTE PRICING (CHAT & CALL ONLY)
     // ==========================================
+
+    chatPricePerMinute: {
+      type: Number,
+      default: 20,
+      min: 0,
+    },
+
+    callPricePerMinute: {
+      type: Number,
+      default: 25,
+      min: 0,
+    },
 
     consultationFee: {
       type: Number,
@@ -461,6 +473,40 @@ const astrologerProfileSchema = new mongoose.Schema(
         type: Boolean,
         default: false,
       },
+    },
+
+    // ==========================================
+    // ONBOARDING VERIFICATION DOCUMENTS
+    // ==========================================
+
+    documents: {
+      aadhaarDocument: {
+        type: String,
+        default: null,
+      },
+      panDocument: {
+        type: String,
+        default: null,
+      },
+      certificateDocument: {
+        type: String,
+        default: null,
+      },
+      profilePhoto: {
+        type: String,
+        default: null,
+      },
+    },
+
+    isProfileSubmitted: {
+      type: Boolean,
+      default: false,
+    },
+
+    submissionStatus: {
+      type: String,
+      enum: ["not_submitted", "submitted", "approved", "rejected"],
+      default: "not_submitted",
     },
 
     // ==========================================
