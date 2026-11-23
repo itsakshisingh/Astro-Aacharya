@@ -58,15 +58,19 @@ jobs:
           VPS_SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
           VPS_KNOWN_HOSTS: ${{ secrets.VPS_KNOWN_HOSTS }}
         run: |
+          VPS_HOST="$(printf '%s' "$VPS_HOST" | tr -d '[:space:]')"
+
           : "${VPS_HOST:?Missing VPS_HOST}"
           : "${VPS_USER:?Missing VPS_USER}"
           : "${VPS_SSH_KEY:?Missing VPS_SSH_KEY}"
           : "${VPS_KNOWN_HOSTS:?Missing VPS_KNOWN_HOSTS}"
 
-          if ! [[ "$VPS_HOST" =~ ^[a-zA-Z0-9.-]+$ ]]; then
-            echo "Invalid VPS_HOST secret"
+          if [[ "$VPS_HOST" != "72.60.220.135" ]]; then
+            echo "Incorrect VPS_HOST. Check repository secret."
             exit 1
           fi
+
+          echo "SSH secrets validation successful."
 
       - name: Configure SSH
         env:
@@ -87,20 +91,34 @@ jobs:
           VPS_USER: ${{ secrets.VPS_USER }}
           VPS_PORT: ${{ secrets.VPS_PORT || '22' }}
         run: |
+          VPS_HOST="$(printf '%s' "$VPS_HOST" | tr -d '[:space:]')"
+
           ssh -o BatchMode=yes \
             -o StrictHostKeyChecking=yes \
             -p "$VPS_PORT" \
             "$VPS_USER@$VPS_HOST" \
             "echo SSH connection successful"
 
-      - name: Create Deployment Backup and Directory
+      - name: Backup Existing Backend
         env:
           VPS_HOST: ${{ secrets.VPS_HOST }}
           VPS_USER: ${{ secrets.VPS_USER }}
           VPS_PORT: ${{ secrets.VPS_PORT || '22' }}
         run: |
+          VPS_HOST="$(printf '%s' "$VPS_HOST" | tr -d '[:space:]')"
+
           ssh -p "$VPS_PORT" "$VPS_USER@$VPS_HOST" '
-            mkdir -p /www/wwwroot/AstroBackend/backend
+            set -e
+            APP_DIR="/www/wwwroot/AstroBackend/backend"
+            BACKUP_DIR="/www/wwwroot/AstroBackend/backups"
+
+            mkdir -p "$BACKUP_DIR"
+
+            if [ -d "$APP_DIR" ]; then
+              tar -czf "$BACKUP_DIR/backend-$(date +%Y%m%d-%H%M%S).tar.gz" \
+                --exclude="node_modules" \
+                -C /www/wwwroot/AstroBackend backend
+            fi
           '
 
       - name: Sync Backend Files
@@ -109,11 +127,14 @@ jobs:
           VPS_USER: ${{ secrets.VPS_USER }}
           VPS_PORT: ${{ secrets.VPS_PORT || '22' }}
         run: |
-          rsync -az --delete \
+          VPS_HOST="$(printf '%s' "$VPS_HOST" | tr -d '[:space:]')"
+
+          rsync -az \
             --exclude='.env' \
             --exclude='uploads/' \
             --exclude='node_modules/' \
             --exclude='.well-known/' \
+            --exclude='.htaccess' \
             -e "ssh -p $VPS_PORT -o StrictHostKeyChecking=yes" \
             backend/ \
             "$VPS_USER@$VPS_HOST:/www/wwwroot/AstroBackend/backend/"
@@ -124,9 +145,14 @@ jobs:
           VPS_USER: ${{ secrets.VPS_USER }}
           VPS_PORT: ${{ secrets.VPS_PORT || '22' }}
         run: |
+          VPS_HOST="$(printf '%s' "$VPS_HOST" | tr -d '[:space:]')"
+
           ssh -p "$VPS_PORT" "$VPS_USER@$VPS_HOST" '
-            cd /www/wwwroot/AstroBackend/backend &&
-            npm install --omit=dev --no-package-lock &&
+            set -e
+            cd /www/wwwroot/AstroBackend/backend
+
+            npm install --omit=dev --no-package-lock
+
             chown -R www:www .
           '
 
@@ -136,6 +162,8 @@ jobs:
           VPS_USER: ${{ secrets.VPS_USER }}
           VPS_PORT: ${{ secrets.VPS_PORT || '22' }}
         run: |
+          VPS_HOST="$(printf '%s' "$VPS_HOST" | tr -d '[:space:]')"
+
           ssh -p "$VPS_PORT" "$VPS_USER@$VPS_HOST" 'bash -s' <<'REMOTE'
             set -e
 
@@ -143,7 +171,9 @@ jobs:
 
             cd "$APP_DIR"
 
-            # Find only the Node process belonging to this directory.
+            # Find the existing application process by exact working directory.
+            PIDS=""
+
             for proc in /proc/[0-9]*; do
               pid="${proc##*/}"
 
@@ -154,22 +184,31 @@ jobs:
               cmd=$(tr '\0' ' ' < "$proc/cmdline" 2>/dev/null || true)
 
               if [ "$cwd" = "$APP_DIR" ] &&
-                 [ "$cmd" = "node server.js " ]; then
-                echo "Stopping existing Astro backend PID: $pid"
-                kill -TERM "$pid"
+                 [[ "$cmd" == "node server.js"* ]]; then
+                PIDS="$PIDS $pid"
               fi
+            done
+
+            for pid in $PIDS; do
+              echo "Stopping Astro Aacharya PID: $pid"
+              kill -TERM "$pid"
             done
 
             sleep 3
 
-            # Start backend as the existing www user.
+            # Start the backend under www user.
             runuser -u www -- bash -c \
               "cd '$APP_DIR' && nohup node server.js >> '$APP_DIR/deploy.log' 2>&1 < /dev/null &"
 
-            sleep 3
+            sleep 5
 
-            echo "========== BACKEND PROCESS =========="
+            echo "========== BACKEND STATUS =========="
+
             pgrep -af "node server.js" || true
 
-            echo "========== DEPLOYMENT COMPLETE =========="
+            echo "========== RECENT LOGS =========="
+
+            tail -30 "$APP_DIR/deploy.log" || true
+
+            echo "========== DEPLOYMENT FINISHED =========="
           REMOTE
