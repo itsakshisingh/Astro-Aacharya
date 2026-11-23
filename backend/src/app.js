@@ -44,7 +44,7 @@ app.use((err, req, res, next) => {
     console.error("Global Express Error:", err.message);
     return res.status(400).json({
       success: false,
-      message: err.message || "An error occurred during request processing",
+      message: err.message || "An error occurred during request processing the text ",
     });
   }
   next();
