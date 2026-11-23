@@ -1,0 +1,285 @@
+
+name: Astro Aacharya CI/CD
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: astro-aacharya-production
+  cancel-in-progress: false
+
+jobs:
+  ci:
+    name: Validate Backend
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install Dependencies
+        working-directory: backend
+        run: npm install --no-package-lock
+
+      - name: Check JavaScript Syntax
+        run: |
+          find backend -type f -name '*.js' \
+            -not -path '*/node_modules/*' \
+            -print0 | xargs -0 -r -n 1 node --check
+
+  deploy:
+    name: Deploy to VPS
+    needs: ci
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Validate SSH Secrets
+        env:
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+          VPS_USER: ${{ secrets.VPS_USER }}
+          VPS_SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
+          VPS_KNOWN_HOSTS: ${{ secrets.VPS_KNOWN_HOSTS }}
+        run: |
+          VPS_HOST="$(printf '%s' "$VPS_HOST" | tr -d '[:space:]')"
+
+          : "${VPS_HOST:?Missing VPS_HOST}"
+          : "${VPS_USER:?Missing VPS_USER}"
+          : "${VPS_SSH_KEY:?Missing VPS_SSH_KEY}"
+          : "${VPS_KNOWN_HOSTS:?Missing VPS_KNOWN_HOSTS}"
+
+          if [[ "$VPS_HOST" != "72.60.220.135" ]]; then
+            echo "Incorrect VPS_HOST secret"
+            exit 1
+          fi
+
+          echo "SSH secrets validated."
+
+      - name: Configure SSH
+        env:
+          VPS_SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
+          VPS_KNOWN_HOSTS: ${{ secrets.VPS_KNOWN_HOSTS }}
+        run: |
+          mkdir -p ~/.ssh
+
+          printf '%s\n' "$VPS_SSH_KEY" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+
+          printf '%s\n' "$VPS_KNOWN_HOSTS" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+
+      - name: Test VPS Connection
+        env:
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+          VPS_USER: ${{ secrets.VPS_USER }}
+          VPS_PORT: ${{ secrets.VPS_PORT || '22' }}
+        run: |
+          VPS_HOST="$(printf '%s' "$VPS_HOST" | tr -d '[:space:]')"
+
+          ssh -o BatchMode=yes \
+            -o StrictHostKeyChecking=yes \
+            -o ConnectTimeout=15 \
+            -p "$VPS_PORT" \
+            "$VPS_USER@$VPS_HOST" \
+            "echo SSH connection successful"
+
+      - name: Backup Existing Backend
+        env:
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+          VPS_USER: ${{ secrets.VPS_USER }}
+          VPS_PORT: ${{ secrets.VPS_PORT || '22' }}
+        run: |
+          VPS_HOST="$(printf '%s' "$VPS_HOST" | tr -d '[:space:]')"
+
+          ssh -o BatchMode=yes -o ConnectTimeout=15 \
+            -p "$VPS_PORT" "$VPS_USER@$VPS_HOST" '
+              set -e
+
+              APP_DIR="/www/wwwroot/AstroBackend/backend"
+              BACKUP_DIR="/www/wwwroot/AstroBackend/backups"
+
+              mkdir -p "$BACKUP_DIR"
+
+              if [ -d "$APP_DIR" ]; then
+                tar -czf "$BACKUP_DIR/backend-$(date +%Y%m%d-%H%M%S).tar.gz" \
+                  --exclude="node_modules" \
+                  -C /www/wwwroot/AstroBackend backend
+              fi
+            '
+
+      - name: Sync Backend Files
+        env:
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+          VPS_USER: ${{ secrets.VPS_USER }}
+          VPS_PORT: ${{ secrets.VPS_PORT || '22' }}
+        run: |
+          VPS_HOST="$(printf '%s' "$VPS_HOST" | tr -d '[:space:]')"
+
+          rsync -az \
+            --exclude='.env' \
+            --exclude='uploads/' \
+            --exclude='node_modules/' \
+            --exclude='.well-known/' \
+            --exclude='.htaccess' \
+            -e "ssh -p $VPS_PORT -o StrictHostKeyChecking=yes" \
+            backend/ \
+            "$VPS_USER@$VPS_HOST:/www/wwwroot/AstroBackend/backend/"
+
+      - name: Install Production Dependencies
+        env:
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+          VPS_USER: ${{ secrets.VPS_USER }}
+          VPS_PORT: ${{ secrets.VPS_PORT || '22' }}
+        run: |
+          VPS_HOST="$(printf '%s' "$VPS_HOST" | tr -d '[:space:]')"
+
+          ssh -o BatchMode=yes -p "$VPS_PORT" "$VPS_USER@$VPS_HOST" '
+            set -e
+
+            cd /www/wwwroot/AstroBackend/backend
+
+            npm install --omit=dev --no-package-lock
+
+            chown -R www:www .
+          '
+
+      - name: Restart Astro Aacharya Backend
+        env:
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+          VPS_USER: ${{ secrets.VPS_USER }}
+          VPS_PORT: ${{ secrets.VPS_PORT || '22' }}
+        run: |
+          VPS_HOST="$(printf '%s' "$VPS_HOST" | tr -d '[:space:]')"
+
+          ssh -o BatchMode=yes \
+            -o ConnectTimeout=15 \
+            -o ServerAliveInterval=15 \
+            -o ServerAliveCountMax=2 \
+            -p "$VPS_PORT" "$VPS_USER@$VPS_HOST" 'bash -s' <<'REMOTE'
+              set -e
+
+              APP_DIR="/www/wwwroot/AstroBackend/backend"
+              LOG_FILE="$APP_DIR/deploy.log"
+              PORT="3690"
+
+              cd "$APP_DIR"
+
+              echo "========== STOP EXISTING BACKEND =========="
+
+              PIDS=""
+
+              for proc in /proc/[0-9]*; do
+                pid="${proc##*/}"
+
+                [ -r "$proc/cmdline" ] || continue
+                [ -r "$proc/cwd" ] || continue
+
+                cwd=$(readlink -f "$proc/cwd" 2>/dev/null || true)
+                cmd=$(tr '\0' ' ' < "$proc/cmdline" 2>/dev/null || true)
+
+                if [ "$cwd" = "$APP_DIR" ] &&
+                   [[ "$cmd" == "node server.js"* ]]; then
+                  PIDS="$PIDS $pid"
+                fi
+              done
+
+              for pid in $PIDS; do
+                echo "Stopping PID: $pid"
+                kill -TERM "$pid" 2>/dev/null || true
+              done
+
+              for attempt in $(seq 1 10); do
+                STILL_RUNNING=""
+
+                for pid in $PIDS; do
+                  if kill -0 "$pid" 2>/dev/null; then
+                    STILL_RUNNING="$STILL_RUNNING $pid"
+                  fi
+                done
+
+                [ -z "$STILL_RUNNING" ] && break
+                sleep 1
+              done
+
+              for pid in $PIDS; do
+                if kill -0 "$pid" 2>/dev/null; then
+                  echo "Process $pid did not stop gracefully."
+                  exit 1
+                fi
+              done
+
+              echo "========== START NEW BACKEND =========="
+
+              chown -R www:www "$APP_DIR"
+
+              # Detach backend completely from the SSH session.
+              runuser -u www -- setsid -f bash -c \
+                'cd /www/wwwroot/AstroBackend/backend && exec node server.js' \
+                </dev/null >> "$LOG_FILE" 2>&1
+
+              echo "Backend start command submitted."
+
+              echo "========== WAIT FOR PORT 3690 =========="
+
+              STARTED=0
+
+              for attempt in $(seq 1 20); do
+                if ss -lnt | grep -q ':3690'; then
+                  STARTED=1
+                  break
+                fi
+
+                sleep 1
+              done
+
+              if [ "$STARTED" -ne 1 ]; then
+                echo "Backend did not start on port 3690."
+                tail -50 "$LOG_FILE" || true
+                exit 1
+              fi
+
+              echo "========== API HEALTH CHECK =========="
+
+              curl -fsS --max-time 10 \
+                http://127.0.0.1:3690/ || {
+                  echo "API health check failed."
+                  tail -50 "$LOG_FILE" || true
+                  exit 1
+                }
+
+              echo
+              echo "========== BACKEND PROCESS =========="
+
+              ss -lntp | grep ':3690'
+
+              echo "========== RECENT LOGS =========="
+
+              tail -20 "$LOG_FILE" || true
+
+              echo "========== DEPLOYMENT SUCCESSFUL =========="
+          REMOTE
+
+      - name: Deployment Summary
+        if: success()
+        run: |
+          echo "Astro Aacharya backend deployment completed successfully."
+          echo "Server: 72.60.220.135"
+          echo "Application port: 3690"
