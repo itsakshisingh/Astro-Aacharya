@@ -122,9 +122,33 @@ const uploadKYCDocument = multer({
   fileFilter: kycFilter,
 });
 
+// Storage for Astrologer Onboarding Files (routes to profiles or kyc folder based on fieldname)
+const astrologerStorage = multer.diskStorage({
+  destination: (req, file, cb) => {
+    if (file.fieldname === "profileImage" || file.fieldname === "profilePhoto") {
+      cb(null, profilesDir);
+    } else {
+      cb(null, kycDir);
+    }
+  },
+  filename: (req, file, cb) => {
+    const uniqueSuffix = Date.now() + "-" + Math.round(Math.random() * 1e9);
+    const ext = path.extname(file.originalname).toLowerCase() || ".jpg";
+    const prefix = file.fieldname.toLowerCase().replace(/[^a-z0-9]/g, "-") || "doc";
+    cb(null, `${prefix}-${uniqueSuffix}${ext}`);
+  },
+});
+
+const uploadAstrologerDocs = multer({
+  storage: astrologerStorage,
+  limits: { fileSize: 15 * 1024 * 1024 }, // 15 MB limit
+  fileFilter: kycFilter, // Allows images and PDFs
+});
+
 module.exports = {
   uploadProfile,
   uploadProduct,
   uploadCertificate,
   uploadKYCDocument,
+  uploadAstrologerDocs,
 };

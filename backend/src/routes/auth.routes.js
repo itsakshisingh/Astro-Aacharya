@@ -16,6 +16,7 @@ const {
 } = require("../controllers/auth.controller");
 
 const { authenticate } = require("../middleware/auth.middleware");
+const { uploadAstrologerDocs } = require("../middleware/upload.middleware");
 
 // ==========================================
 // OTP AUTHENTICATION ROUTES
@@ -68,9 +69,9 @@ router.get("/profile/:userId", authenticate, getUserProfile);
 // TRADITIONAL AUTH ROUTES
 // ==========================================
 
-// 10. Register
-router.post("/register", registerUser);
-router.post("/astrologer/register", registerUser);
+// 10. Register (Supports JSON & multipart/form-data with documents)
+router.post("/register", uploadAstrologerDocs.any(), registerUser);
+router.post("/astrologer/register", uploadAstrologerDocs.any(), registerUser);
 
 // 11. Password-based Login
 router.post("/login", loginUser);

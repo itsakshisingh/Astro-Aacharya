@@ -158,10 +158,29 @@ const updateAstrologerProfile = async (req, res) => {
     if (coverImage !== undefined) profile.coverImage = coverImage;
     if (experience !== undefined) profile.experience = Number(experience);
     if (experienceUnit !== undefined) profile.experienceUnit = experienceUnit;
-    if (specialization !== undefined) profile.specialization = specialization;
-    if (skills !== undefined) profile.skills = skills;
-    if (expertise !== undefined) profile.expertise = expertise;
-    if (languages !== undefined) profile.languages = languages;
+
+    // Helper to safely parse array fields from form-data (e.g. "Vedic, Tarot" or '["Vedic","Tarot"]')
+    const parseArrayField = (val) => {
+      if (!val) return undefined;
+      if (Array.isArray(val)) return val;
+      if (typeof val === "string") {
+        try {
+          const parsed = JSON.parse(val);
+          if (Array.isArray(parsed)) return parsed;
+        } catch (e) {}
+        return val.split(",").map((s) => s.trim()).filter(Boolean);
+      }
+      return undefined;
+    };
+
+    const parsedSkills = parseArrayField(skills);
+    const parsedSpecialization = parseArrayField(specialization);
+    const parsedLanguages = parseArrayField(languages);
+
+    if (parsedSkills !== undefined) profile.skills = parsedSkills;
+    if (parsedSpecialization !== undefined) profile.specialization = parsedSpecialization;
+    if (parsedLanguages !== undefined) profile.languages = parsedLanguages;
+    if (expertise !== undefined) profile.expertise = parseArrayField(expertise) || expertise;
 
     // Pricing (Chat & Call per minute)
     if (chatPricePerMinute !== undefined) profile.chatPricePerMinute = Number(chatPricePerMinute);
@@ -171,21 +190,63 @@ const updateAstrologerProfile = async (req, res) => {
     if (freeConsultation !== undefined) profile.freeConsultation = freeConsultation;
     if (consultationModes !== undefined) profile.consultationModes = consultationModes;
 
-    // Documents from Screenshot 3
+    // Handle Direct File Uploads from multipart/form-data
+    if (req.files && req.files.length > 0) {
+      if (!profile.documents) profile.documents = {};
+      if (!profile.kyc) profile.kyc = {};
+
+      req.files.forEach((file) => {
+        const fileUrl = file.destination.includes("profiles")
+          ? `/uploads/profiles/${file.filename}`
+          : `/uploads/kyc/${file.filename}`;
+
+        const field = file.fieldname.toLowerCase().trim();
+
+        if (field === "profileimage" || field === "profilephoto" || field === "profile_photo") {
+          profile.profileImage = fileUrl;
+          profile.documents.profilePhoto = fileUrl;
+          user.profileImage = fileUrl;
+        } else if (field === "aadhaardocument" || field === "aadhaar" || field === "idproof" || field === "id_proof") {
+          profile.documents.aadhaarDocument = fileUrl;
+          profile.kyc.aadhaarFrontImage = fileUrl;
+        } else if (field === "pandocument" || field === "pan" || field === "pancard" || field === "pan_card") {
+          profile.documents.panDocument = fileUrl;
+          profile.kyc.panCardImage = fileUrl;
+        } else if (field === "certificatedocument" || field === "certificate" || field === "astrologycertificate") {
+          profile.documents.certificateDocument = fileUrl;
+        }
+      });
+    }
+
+    // Documents from text / JSON in body
     if (documents !== undefined) {
-      profile.documents = {
-        ...profile.documents,
-        ...documents,
-      };
-      if (documents.profilePhoto) {
-        profile.profileImage = documents.profilePhoto;
+      let docObj = documents;
+      if (typeof documents === "string") {
+        try {
+          docObj = JSON.parse(documents);
+        } catch (e) {}
+      }
+      if (typeof docObj === "object") {
+        profile.documents = {
+          ...profile.documents,
+          ...docObj,
+        };
+        if (docObj.profilePhoto) {
+          profile.profileImage = docObj.profilePhoto;
+        }
       }
     }
 
     // Submission flag when astrologer clicks "Submit for Verification"
-    if (isProfileSubmitted !== undefined) {
-      profile.isProfileSubmitted = Boolean(isProfileSubmitted);
-      if (isProfileSubmitted) {
+    const isSubmitted =
+      isProfileSubmitted === true ||
+      isProfileSubmitted === "true" ||
+      isProfileSubmitted === "1" ||
+      Boolean(profile.documents?.aadhaarDocument || profile.documents?.panDocument);
+
+    if (isProfileSubmitted !== undefined || isSubmitted) {
+      profile.isProfileSubmitted = isSubmitted;
+      if (isSubmitted) {
         profile.submissionStatus = "submitted";
         profile.verificationStatus = "pending";
       }

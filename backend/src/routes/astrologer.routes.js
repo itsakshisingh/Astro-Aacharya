@@ -1,5 +1,6 @@
 const express = require("express");
 const router = express.Router();
+const { uploadAstrologerDocs } = require("../middleware/upload.middleware");
 
 const {
   getAstrologerProfile,
@@ -16,13 +17,13 @@ router.get("/public", getPublicAstrologers);
 // Get Profile by Astrologer User ID
 router.get("/profile/:userId", getAstrologerProfile);
 
-// Update / Complete Astrologer Profile
-router.put("/profile/:userId", updateAstrologerProfile);
-router.patch("/profile/:userId", updateAstrologerProfile);
+// Update / Complete Astrologer Profile (Supports Direct Multipart File Uploads!)
+router.put("/profile/:userId", uploadAstrologerDocs.any(), updateAstrologerProfile);
+router.patch("/profile/:userId", uploadAstrologerDocs.any(), updateAstrologerProfile);
 
-// Submit / Update KYC Details (Aadhaar & PAN)
-router.put("/kyc/:userId", submitKYC);
-router.patch("/kyc/:userId", submitKYC);
+// Submit / Update KYC Details (Supports Direct Multipart File Uploads!)
+router.put("/kyc/:userId", uploadAstrologerDocs.any(), submitKYC);
+router.patch("/kyc/:userId", uploadAstrologerDocs.any(), submitKYC);
 
 // Update Bank & Payout Details
 router.put("/bank-details/:userId", updateBankDetails);

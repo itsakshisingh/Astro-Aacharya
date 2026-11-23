@@ -484,7 +484,32 @@ const registerUser = async (req, res) => {
     const hashedPassword = await bcrypt.hash(password, 12);
     const status = role === "astrologer" ? "pending" : "active";
 
-    const effectivePhoto = profileImage || documents?.profilePhoto || null;
+    // Extract uploaded files from form-data if present
+    let uploadedAadhaar = documents?.aadhaarDocument || null;
+    let uploadedPan = documents?.panDocument || null;
+    let uploadedCert = documents?.certificateDocument || null;
+    let uploadedPhoto = profileImage || documents?.profilePhoto || null;
+
+    if (req.files && req.files.length > 0) {
+      req.files.forEach((file) => {
+        const fileUrl = file.destination.includes("profiles")
+          ? `/uploads/profiles/${file.filename}`
+          : `/uploads/kyc/${file.filename}`;
+        const field = file.fieldname.toLowerCase().trim();
+
+        if (field === "profileimage" || field === "profilephoto" || field === "profile_photo") {
+          uploadedPhoto = fileUrl;
+        } else if (field === "aadhaardocument" || field === "aadhaar" || field === "idproof" || field === "id_proof") {
+          uploadedAadhaar = fileUrl;
+        } else if (field === "pandocument" || field === "pan" || field === "pancard" || field === "pan_card") {
+          uploadedPan = fileUrl;
+        } else if (field === "certificatedocument" || field === "certificate" || field === "astrologycertificate") {
+          uploadedCert = fileUrl;
+        }
+      });
+    }
+
+    const effectivePhoto = uploadedPhoto;
 
     const user = await User.create({
       fullName: fullName.trim(),
@@ -511,13 +536,28 @@ const registerUser = async (req, res) => {
 
     let astroProfile = null;
     if (role === "astrologer") {
+      const parseArray = (val) => {
+        if (!val) return [];
+        if (Array.isArray(val)) return val;
+        if (typeof val === "string") {
+          try {
+            const parsed = JSON.parse(val);
+            if (Array.isArray(parsed)) return parsed;
+          } catch (e) {}
+          return val.split(",").map((s) => s.trim()).filter(Boolean);
+        }
+        return [];
+      };
+
       const astroBio = bio || about || "";
-      const astroSkills = Array.isArray(skills) ? skills : [];
-      const astroLangs = Array.isArray(languages) ? languages : [];
+      const astroSkills = parseArray(skills);
+      const astroLangs = parseArray(languages);
       const isSubmitted = Boolean(
-        isProfileSubmitted ||
-        documents?.aadhaarDocument ||
-        documents?.panDocument
+        isProfileSubmitted === true ||
+        isProfileSubmitted === "true" ||
+        isProfileSubmitted === "1" ||
+        uploadedAadhaar ||
+        uploadedPan
       );
 
       astroProfile = await AstrologerProfile.create({
@@ -526,7 +566,7 @@ const registerUser = async (req, res) => {
         experience: experience !== undefined ? Number(experience) : 0,
         experienceUnit: experienceUnit || "years",
         skills: astroSkills,
-        specialization: Array.isArray(specialization) ? specialization : astroSkills,
+        specialization: parseArray(specialization).length > 0 ? parseArray(specialization) : astroSkills,
         languages: astroLangs,
         bio: astroBio,
         chatPricePerMinute: chatPricePerMinute !== undefined ? Number(chatPricePerMinute) : 20,
@@ -534,10 +574,15 @@ const registerUser = async (req, res) => {
         profileImage: effectivePhoto,
         alternateMobile: alternateMobile || null,
         documents: {
-          aadhaarDocument: documents?.aadhaarDocument || null,
-          panDocument: documents?.panDocument || null,
-          certificateDocument: documents?.certificateDocument || null,
-          profilePhoto: documents?.profilePhoto || effectivePhoto,
+          aadhaarDocument: uploadedAadhaar,
+          panDocument: uploadedPan,
+          certificateDocument: uploadedCert,
+          profilePhoto: effectivePhoto,
+        },
+        kyc: {
+          aadhaarFrontImage: uploadedAadhaar,
+          panCardImage: uploadedPan,
+          status: "pending",
         },
         isProfileSubmitted: isSubmitted,
         submissionStatus: isSubmitted ? "submitted" : "not_submitted",
