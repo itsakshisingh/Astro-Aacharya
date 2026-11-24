@@ -44,10 +44,11 @@ const submitPaymentReceipt = async (req, res) => {
       utrNumber,
       paymentMethod = "UPI",
       qrId,
+      productId,
       astrologerId,
       orderId,
       appointmentId,
-      purpose = "consultation",
+      purpose,
       notes,
     } = req.body;
 
@@ -91,6 +92,7 @@ const submitPaymentReceipt = async (req, res) => {
       senderMobile: effectiveSenderMobile,
       senderEmail: effectiveSenderEmail,
       qrId: qrId || null,
+      productId: productId || null,
       astrologerId: astrologerId || null,
       orderId: orderId || null,
       appointmentId: appointmentId || null,
@@ -99,15 +101,19 @@ const submitPaymentReceipt = async (req, res) => {
       paymentMethod: (paymentMethod || "UPI").trim(),
       screenshotImage: uploadedUrls[0],
       screenshots: uploadedUrls,
-      purpose: purpose || "consultation",
+      purpose: purpose || (productId ? "product_order" : "consultation"),
       notes: notes ? notes.trim() : null,
       status: "pending",
     });
 
+    const populatedPayment = await ManualPayment.findById(payment._id)
+      .populate("productId", "title name price images category")
+      .populate("qrId", "title upiId accountHolderName qrCodeImage");
+
     return res.status(201).json({
       success: true,
       message: "Payment screenshot(s) submitted successfully. Admin/Astrologer will verify shortly.",
-      data: formatPayment(req, payment),
+      data: formatPayment(req, populatedPayment || payment),
     });
   } catch (error) {
     console.error("Submit Payment Receipt Error:", error);
@@ -125,6 +131,7 @@ const getMyPayments = async (req, res) => {
     const userId = req.user._id;
 
     const payments = await ManualPayment.find({ userId })
+      .populate("productId", "title name price images category")
       .populate("qrId", "title upiId accountHolderName qrCodeImage")
       .populate("astrologerId", "displayName professionalTitle profileImage")
       .sort({ createdAt: -1 });
@@ -149,16 +156,18 @@ const getMyPayments = async (req, res) => {
 // 3. Get All Payments (Admin / Astrologer Review List)
 const getAllPayments = async (req, res) => {
   try {
-    const { status, astrologerId, purpose, userId } = req.query;
+    const { status, astrologerId, purpose, userId, productId } = req.query;
     const filter = {};
 
     if (status) filter.status = status;
     if (astrologerId) filter.astrologerId = astrologerId;
+    if (productId) filter.productId = productId;
     if (purpose) filter.purpose = purpose;
     if (userId) filter.userId = userId;
 
     const payments = await ManualPayment.find(filter)
       .populate("userId", "fullName mobile email profileImage")
+      .populate("productId", "title name price images category")
       .populate("qrId", "title upiId accountHolderName")
       .populate("astrologerId", "displayName professionalTitle profileImage")
       .populate("verifiedBy", "fullName role")
@@ -188,6 +197,7 @@ const getPaymentById = async (req, res) => {
 
     const payment = await ManualPayment.findById(id)
       .populate("userId", "fullName mobile email profileImage")
+      .populate("productId", "title name price images category")
       .populate("qrId", "title upiId accountHolderName qrCodeImage")
       .populate("astrologerId", "displayName professionalTitle profileImage")
       .populate("verifiedBy", "fullName role");

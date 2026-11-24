@@ -44,6 +44,12 @@ const manualPaymentSchema = new mongoose.Schema(
       default: null,
     },
 
+    productId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Product",
+      default: null,
+    },
+
     appointmentId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Appointment",
