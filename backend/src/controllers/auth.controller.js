@@ -2,6 +2,7 @@ const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
 const User = require("../models/user.model");
 const AstrologerProfile = require("../models/astrologerProfile.model");
+const OtpVerification = require("../models/otpVerification.model");
 
 const STATIC_OTP = "1234";
 const OTP_EXPIRY_MINUTES = 5;
@@ -40,15 +41,16 @@ const formatUserData = (user) => {
     pincode: user.pincode || null,
     role: user.role,
     status: user.status,
+    isMobileVerified: user.isMobileVerified || false,
     profileImage: user.profileImage || null,
     createdAt: user.createdAt,
   };
 };
 
-// 1. Send OTP (Mobile Number Login / Registration)
+// 1. Send OTP (Mobile Number Login / Registration Pre-verification)
 const sendOtp = async (req, res) => {
   try {
-    const { mobile, mobileNumber, countryCode = "+91", fullName } = req.body;
+    const { mobile, mobileNumber, countryCode = "+91" } = req.body;
     const userMobile = (mobile || mobileNumber || "").toString().trim();
 
     if (!userMobile) {
@@ -69,26 +71,29 @@ const sendOtp = async (req, res) => {
 
     const otpExpiry = new Date(Date.now() + OTP_EXPIRY_MINUTES * 60 * 1000);
 
-    // Check if user exists
-    let user = await User.findOne({ mobile: userMobile });
-    let isNewUser = false;
+    // Check if user already exists
+    const user = await User.findOne({ mobile: userMobile });
+    const isNewUser = !user;
 
-    if (!user) {
-      isNewUser = true;
-      user = new User({
-        fullName: (fullName || "User").trim(),
+    // Save/update OTP in OtpVerification collection
+    await OtpVerification.findOneAndUpdate(
+      { mobile: userMobile },
+      {
         mobile: userMobile,
-        countryCode: countryCode.trim(),
-        role: "user",
-        status: "active",
-      });
-    } else {
-      if (countryCode) user.countryCode = countryCode.trim();
-    }
+        otp: STATIC_OTP,
+        otpExpiresAt: otpExpiry,
+        isVerified: false,
+        verifiedAt: null,
+      },
+      { upsert: true, new: true, setDefaultsOnInsert: true }
+    );
 
-    user.otp = STATIC_OTP;
-    user.otpExpiresAt = otpExpiry;
-    await user.save();
+    // If existing user, also store in User document for mobile OTP login
+    if (user) {
+      user.otp = STATIC_OTP;
+      user.otpExpiresAt = otpExpiry;
+      await user.save();
+    }
 
     return res.status(200).json({
       success: true,
@@ -107,65 +112,91 @@ const sendOtp = async (req, res) => {
   }
 };
 
-// 2. Verify OTP & Login
+// 2. Verify OTP & Login / Registration Pre-verification
 const verifyOtp = async (req, res) => {
   try {
     const { mobile, mobileNumber, otp } = req.body;
     const userMobile = (mobile || mobileNumber || "").toString().trim();
+    const enteredOtp = (otp || "").toString().trim();
 
-    if (!userMobile || !otp) {
+    if (!userMobile || !enteredOtp) {
       return res.status(400).json({
         success: false,
         message: "Mobile number and OTP are required",
       });
     }
 
+    // Find in OtpVerification
+    const verification = await OtpVerification.findOne({ mobile: userMobile });
     const user = await User.findOne({ mobile: userMobile }).select("+otp");
 
-    if (!user) {
+    if (!verification && !user) {
       return res.status(404).json({
         success: false,
-        message: "User not found. Please request an OTP first.",
+        message: "No OTP request found for this mobile number. Please request an OTP first.",
       });
     }
 
-    // Check account status
-    if (user.status === "blocked" || user.status === "rejected") {
-      return res.status(403).json({
-        success: false,
-        message: `Your account is ${user.status}. Please contact support.`,
-      });
-    }
+    // Match OTP against verification or user.otp
+    const isOtpMatched =
+      (verification && verification.otp === enteredOtp) ||
+      (user && user.otp === enteredOtp);
 
-    // Check if OTP matches
-    if (user.otp !== otp.toString().trim()) {
+    if (!isOtpMatched) {
       return res.status(400).json({
         success: false,
         message: "Invalid OTP. Please enter the correct OTP.",
       });
     }
 
-    // Check OTP Expiry
-    if (!user.otpExpiresAt || new Date() > user.otpExpiresAt) {
+    // Check expiry
+    const otpExpiryTime = verification?.otpExpiresAt || user?.otpExpiresAt;
+    if (!otpExpiryTime || new Date() > new Date(otpExpiryTime)) {
       return res.status(400).json({
         success: false,
         message: "OTP has expired. Please request a new OTP via Resend OTP.",
       });
     }
 
-    // Clear OTP after successful verification
-    user.otp = null;
-    user.otpExpiresAt = null;
-    await user.save();
+    // Mark OtpVerification as verified
+    if (verification) {
+      verification.isVerified = true;
+      verification.verifiedAt = new Date();
+      await verification.save();
+    }
 
-    // Generate JWT Session Token
-    const token = generateToken(user);
+    // If user already exists in DB -> Log them in
+    if (user) {
+      if (user.status === "blocked" || user.status === "rejected") {
+        return res.status(403).json({
+          success: false,
+          message: `Your account is ${user.status}. Please contact support.`,
+        });
+      }
 
+      user.otp = null;
+      user.otpExpiresAt = null;
+      user.isMobileVerified = true;
+      await user.save();
+
+      const token = generateToken(user);
+
+      return res.status(200).json({
+        success: true,
+        message: "Login successful",
+        isNewUser: false,
+        token,
+        data: formatUserData(user),
+      });
+    }
+
+    // If user is new (Not registered yet) -> Return verified status so frontend can proceed to register
     return res.status(200).json({
       success: true,
-      message: "Login successful",
-      token,
-      data: formatUserData(user),
+      message: "Mobile number verified successfully. You can now complete your registration.",
+      isNewUser: true,
+      isMobileVerified: true,
+      verifiedMobile: userMobile,
     });
   } catch (error) {
     console.error("Verify OTP Error:", error);
@@ -190,20 +221,27 @@ const resendOtp = async (req, res) => {
       });
     }
 
-    const user = await User.findOne({ mobile: userMobile });
-
-    if (!user) {
-      return res.status(404).json({
-        success: false,
-        message: "User not found with this mobile number. Please send OTP first.",
-      });
-    }
-
     const otpExpiry = new Date(Date.now() + OTP_EXPIRY_MINUTES * 60 * 1000);
 
-    user.otp = STATIC_OTP;
-    user.otpExpiresAt = otpExpiry;
-    await user.save();
+    // Update in OtpVerification
+    await OtpVerification.findOneAndUpdate(
+      { mobile: userMobile },
+      {
+        mobile: userMobile,
+        otp: STATIC_OTP,
+        otpExpiresAt: otpExpiry,
+        isVerified: false,
+        verifiedAt: null,
+      },
+      { upsert: true, new: true, setDefaultsOnInsert: true }
+    );
+
+    const user = await User.findOne({ mobile: userMobile });
+    if (user) {
+      user.otp = STATIC_OTP;
+      user.otpExpiresAt = otpExpiry;
+      await user.save();
+    }
 
     return res.status(200).json({
       success: true,
@@ -481,6 +519,31 @@ const registerUser = async (req, res) => {
       });
     }
 
+    // Verify that this mobile number has already completed OTP verification
+    const verification = await OtpVerification.findOne({
+      mobile: userMobile,
+      isVerified: true,
+    });
+
+    if (!verification) {
+      return res.status(400).json({
+        success: false,
+        message: "Please enter the same verified mobile number. Mobile number must be verified with OTP before registration.",
+      });
+    }
+
+    // Check if verification has expired (30 minutes validity)
+    const maxVerifiedAgeMs = 30 * 60 * 1000;
+    if (
+      !verification.verifiedAt ||
+      Date.now() - new Date(verification.verifiedAt).getTime() > maxVerifiedAgeMs
+    ) {
+      return res.status(400).json({
+        success: false,
+        message: "Mobile verification has expired. Please verify your mobile number with OTP again.",
+      });
+    }
+
     const hashedPassword = await bcrypt.hash(password, 12);
     const status = role === "astrologer" ? "pending" : "active";
 
@@ -532,6 +595,7 @@ const registerUser = async (req, res) => {
       profileImage: effectivePhoto,
       role,
       status,
+      isMobileVerified: true,
     });
 
     let astroProfile = null;
@@ -589,6 +653,9 @@ const registerUser = async (req, res) => {
         verificationStatus: "pending",
       });
     }
+
+    // Clear verification record after successful registration
+    await OtpVerification.deleteOne({ mobile: userMobile });
 
     const token = generateToken(user);
 
