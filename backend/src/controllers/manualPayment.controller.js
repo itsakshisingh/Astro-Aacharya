@@ -1,5 +1,11 @@
+const mongoose = require("mongoose");
 const ManualPayment = require("../models/manualPayment.model");
 const PaymentQr = require("../models/paymentQr.model");
+const Order = require("../models/order.model");
+
+// Helper to check valid 24-character hex ObjectId
+const isValidObjectId = (id) =>
+  id && mongoose.Types.ObjectId.isValid(id.toString()) && id.toString().length === 24;
 
 // Helper to format full URL
 const getFullUrl = (req, relativePath) => {
@@ -86,28 +92,49 @@ const submitPaymentReceipt = async (req, res) => {
     const effectiveSenderMobile = req.user.mobile || null;
     const effectiveSenderEmail = req.user.email || null;
 
+    // Safely resolve orderId (supports string like "ORD-1795525186994-1515" or ObjectId)
+    let resolvedOrderId = null;
+    let resolvedOrderRef = null;
+
+    if (orderId) {
+      const orderStr = orderId.toString().trim();
+      resolvedOrderId = orderStr;
+
+      // Try finding the Order document either by string orderId ("ORD-...") or by ObjectId
+      let foundOrder = await Order.findOne({ orderId: orderStr });
+      if (!foundOrder && isValidObjectId(orderStr)) {
+        foundOrder = await Order.findById(orderStr);
+      }
+      if (foundOrder) {
+        resolvedOrderId = foundOrder.orderId;
+        resolvedOrderRef = foundOrder._id;
+      }
+    }
+
     const payment = await ManualPayment.create({
       userId,
       senderName: effectiveSenderName,
       senderMobile: effectiveSenderMobile,
       senderEmail: effectiveSenderEmail,
-      qrId: qrId || null,
-      productId: productId || null,
-      astrologerId: astrologerId || null,
-      orderId: orderId || null,
-      appointmentId: appointmentId || null,
+      qrId: isValidObjectId(qrId) ? qrId : null,
+      productId: isValidObjectId(productId) ? productId : null,
+      astrologerId: isValidObjectId(astrologerId) ? astrologerId : null,
+      orderId: resolvedOrderId,
+      orderRef: resolvedOrderRef,
+      appointmentId: isValidObjectId(appointmentId) ? appointmentId : null,
       amount: amount !== undefined && !isNaN(Number(amount)) ? Number(amount) : 0,
       utrNumber: utrNumber ? utrNumber.trim() : null,
       paymentMethod: (paymentMethod || "UPI").trim(),
       screenshotImage: uploadedUrls[0],
       screenshots: uploadedUrls,
-      purpose: purpose || (productId ? "product_order" : "consultation"),
+      purpose: purpose || (resolvedOrderId || productId ? "product_order" : "consultation"),
       notes: notes ? notes.trim() : null,
       status: "pending",
     });
 
     const populatedPayment = await ManualPayment.findById(payment._id)
       .populate("productId", "title name price images category")
+      .populate("orderRef")
       .populate("qrId", "title upiId accountHolderName qrCodeImage");
 
     return res.status(201).json({
@@ -132,6 +159,7 @@ const getMyPayments = async (req, res) => {
 
     const payments = await ManualPayment.find({ userId })
       .populate("productId", "title name price images category")
+      .populate("orderRef")
       .populate("qrId", "title upiId accountHolderName qrCodeImage")
       .populate("astrologerId", "displayName professionalTitle profileImage")
       .sort({ createdAt: -1 });
@@ -156,18 +184,20 @@ const getMyPayments = async (req, res) => {
 // 3. Get All Payments (Admin / Astrologer Review List)
 const getAllPayments = async (req, res) => {
   try {
-    const { status, astrologerId, purpose, userId, productId } = req.query;
+    const { status, astrologerId, purpose, userId, productId, orderId } = req.query;
     const filter = {};
 
     if (status) filter.status = status;
     if (astrologerId) filter.astrologerId = astrologerId;
     if (productId) filter.productId = productId;
+    if (orderId) filter.orderId = orderId;
     if (purpose) filter.purpose = purpose;
     if (userId) filter.userId = userId;
 
     const payments = await ManualPayment.find(filter)
       .populate("userId", "fullName mobile email profileImage")
       .populate("productId", "title name price images category")
+      .populate("orderRef")
       .populate("qrId", "title upiId accountHolderName")
       .populate("astrologerId", "displayName professionalTitle profileImage")
       .populate("verifiedBy", "fullName role")
@@ -198,6 +228,7 @@ const getPaymentById = async (req, res) => {
     const payment = await ManualPayment.findById(id)
       .populate("userId", "fullName mobile email profileImage")
       .populate("productId", "title name price images category")
+      .populate("orderRef")
       .populate("qrId", "title upiId accountHolderName qrCodeImage")
       .populate("astrologerId", "displayName professionalTitle profileImage")
       .populate("verifiedBy", "fullName role");
@@ -250,6 +281,11 @@ const updatePaymentStatus = async (req, res) => {
     payment.verifiedAt = new Date();
 
     await payment.save();
+
+    // If approved and linked to an Order, mark order paymentStatus as COMPLETED
+    if (status === "approved" && payment.orderRef) {
+      await Order.findByIdAndUpdate(payment.orderRef, { paymentStatus: "COMPLETED" });
+    }
 
     return res.status(200).json({
       success: true,

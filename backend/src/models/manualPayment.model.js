@@ -39,6 +39,12 @@ const manualPaymentSchema = new mongoose.Schema(
     },
 
     orderId: {
+      type: String,
+      trim: true,
+      default: null, // Supports human-readable string like "ORD-1795525186994-1515"
+    },
+
+    orderRef: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Order",
       default: null,
