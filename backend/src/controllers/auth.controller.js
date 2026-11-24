@@ -128,7 +128,7 @@ const verifyOtp = async (req, res) => {
 
     // Find in OtpVerification
     const verification = await OtpVerification.findOne({ mobile: userMobile });
-    const user = await User.findOne({ mobile: userMobile }).select("+otp");
+    const user = await User.findOne({ mobile: userMobile }).select("+otp +password");
 
     if (!verification && !user) {
       return res.status(404).json({
@@ -165,7 +165,7 @@ const verifyOtp = async (req, res) => {
       await verification.save();
     }
 
-    // If user already exists in DB -> Log them in
+    // If user already exists in DB
     if (user) {
       if (user.status === "blocked" || user.status === "rejected") {
         return res.status(403).json({
@@ -180,11 +180,15 @@ const verifyOtp = async (req, res) => {
       await user.save();
 
       const token = generateToken(user);
+      const isRegistered = Boolean(user.password);
 
       return res.status(200).json({
         success: true,
-        message: "Login successful",
-        isNewUser: false,
+        message: isRegistered
+          ? "Login successful"
+          : "Mobile number verified successfully. You can now complete your registration.",
+        isNewUser: !isRegistered,
+        isMobileVerified: true,
         token,
         data: formatUserData(user),
       });
@@ -485,8 +489,12 @@ const registerUser = async (req, res) => {
 
       const existingEmail = await User.findOne({
         email: email.toLowerCase().trim(),
-      });
-      if (existingEmail) {
+      }).select("+password");
+      if (
+        existingEmail &&
+        existingEmail.password &&
+        existingEmail.mobile !== userMobile
+      ) {
         return res.status(409).json({
           success: false,
           message: "Email is already registered",
@@ -511,11 +519,13 @@ const registerUser = async (req, res) => {
 
     const existingMobile = await User.findOne({
       mobile: userMobile,
-    });
-    if (existingMobile) {
+    }).select("+password");
+
+    // Only reject if user has already completed registration with a password
+    if (existingMobile && existingMobile.password) {
       return res.status(409).json({
         success: false,
-        message: "Mobile number is already registered",
+        message: "Mobile number is already registered. Please login.",
       });
     }
 
@@ -574,29 +584,54 @@ const registerUser = async (req, res) => {
 
     const effectivePhoto = uploadedPhoto;
 
-    const user = await User.create({
-      fullName: fullName.trim(),
-      countryCode: countryCode.trim(),
-      email: email ? email.toLowerCase().trim() : null,
-      mobile: userMobile,
-      gender: userGender,
-      password: hashedPassword,
-      dob: dob || null,
-      tob: tob || null,
-      pob: pob || null,
-      maritalStatus: maritalStatus || null,
-      occupation: occupation || null,
-      topicOfConcern: topicOfConcern || null,
-      address: address || null,
-      city: city || null,
-      state: state || null,
-      country: country || "India",
-      pincode: pincode || null,
-      profileImage: effectivePhoto,
-      role,
-      status,
-      isMobileVerified: true,
-    });
+    let user = existingMobile;
+    if (user) {
+      user.fullName = fullName.trim();
+      user.countryCode = countryCode.trim();
+      if (email) user.email = email.toLowerCase().trim();
+      user.gender = userGender;
+      user.password = hashedPassword;
+      user.dob = dob || user.dob || null;
+      user.tob = tob || user.tob || null;
+      user.pob = pob || user.pob || null;
+      user.maritalStatus = maritalStatus || user.maritalStatus || null;
+      user.occupation = occupation || user.occupation || null;
+      user.topicOfConcern = topicOfConcern || user.topicOfConcern || null;
+      user.address = address || user.address || null;
+      user.city = city || user.city || null;
+      user.state = state || user.state || null;
+      user.country = country || user.country || "India";
+      user.pincode = pincode || user.pincode || null;
+      if (effectivePhoto) user.profileImage = effectivePhoto;
+      user.role = role;
+      user.status = status;
+      user.isMobileVerified = true;
+      await user.save();
+    } else {
+      user = await User.create({
+        fullName: fullName.trim(),
+        countryCode: countryCode.trim(),
+        email: email ? email.toLowerCase().trim() : null,
+        mobile: userMobile,
+        gender: userGender,
+        password: hashedPassword,
+        dob: dob || null,
+        tob: tob || null,
+        pob: pob || null,
+        maritalStatus: maritalStatus || null,
+        occupation: occupation || null,
+        topicOfConcern: topicOfConcern || null,
+        address: address || null,
+        city: city || null,
+        state: state || null,
+        country: country || "India",
+        pincode: pincode || null,
+        profileImage: effectivePhoto,
+        role,
+        status,
+        isMobileVerified: true,
+      });
+    }
 
     let astroProfile = null;
     if (role === "astrologer") {
@@ -624,34 +659,58 @@ const registerUser = async (req, res) => {
         uploadedPan
       );
 
-      astroProfile = await AstrologerProfile.create({
-        userId: user._id,
-        displayName: user.fullName,
-        experience: experience !== undefined ? Number(experience) : 0,
-        experienceUnit: experienceUnit || "years",
-        skills: astroSkills,
-        specialization: parseArray(specialization).length > 0 ? parseArray(specialization) : astroSkills,
-        languages: astroLangs,
-        bio: astroBio,
-        chatPricePerMinute: chatPricePerMinute !== undefined ? Number(chatPricePerMinute) : 20,
-        callPricePerMinute: callPricePerMinute !== undefined ? Number(callPricePerMinute) : 25,
-        profileImage: effectivePhoto,
-        alternateMobile: alternateMobile || null,
-        documents: {
-          aadhaarDocument: uploadedAadhaar,
-          panDocument: uploadedPan,
-          certificateDocument: uploadedCert,
-          profilePhoto: effectivePhoto,
-        },
-        kyc: {
-          aadhaarFrontImage: uploadedAadhaar,
-          panCardImage: uploadedPan,
-          status: "pending",
-        },
-        isProfileSubmitted: isSubmitted,
-        submissionStatus: isSubmitted ? "submitted" : "not_submitted",
-        verificationStatus: "pending",
-      });
+      astroProfile = await AstrologerProfile.findOne({ userId: user._id });
+      if (astroProfile) {
+        astroProfile.displayName = user.fullName;
+        if (experience !== undefined) astroProfile.experience = Number(experience);
+        astroProfile.experienceUnit = experienceUnit || astroProfile.experienceUnit || "years";
+        astroProfile.skills = astroSkills;
+        astroProfile.specialization = parseArray(specialization).length > 0 ? parseArray(specialization) : astroSkills;
+        astroProfile.languages = astroLangs;
+        astroProfile.bio = astroBio;
+        if (chatPricePerMinute !== undefined) astroProfile.chatPricePerMinute = Number(chatPricePerMinute);
+        if (callPricePerMinute !== undefined) astroProfile.callPricePerMinute = Number(callPricePerMinute);
+        if (effectivePhoto) astroProfile.profileImage = effectivePhoto;
+        if (alternateMobile) astroProfile.alternateMobile = alternateMobile;
+        astroProfile.documents = {
+          aadhaarDocument: uploadedAadhaar || astroProfile.documents?.aadhaarDocument,
+          panDocument: uploadedPan || astroProfile.documents?.panDocument,
+          certificateDocument: uploadedCert || astroProfile.documents?.certificateDocument,
+          profilePhoto: effectivePhoto || astroProfile.documents?.profilePhoto,
+        };
+        astroProfile.isProfileSubmitted = isSubmitted;
+        astroProfile.submissionStatus = isSubmitted ? "submitted" : astroProfile.submissionStatus;
+        await astroProfile.save();
+      } else {
+        astroProfile = await AstrologerProfile.create({
+          userId: user._id,
+          displayName: user.fullName,
+          experience: experience !== undefined ? Number(experience) : 0,
+          experienceUnit: experienceUnit || "years",
+          skills: astroSkills,
+          specialization: parseArray(specialization).length > 0 ? parseArray(specialization) : astroSkills,
+          languages: astroLangs,
+          bio: astroBio,
+          chatPricePerMinute: chatPricePerMinute !== undefined ? Number(chatPricePerMinute) : 20,
+          callPricePerMinute: callPricePerMinute !== undefined ? Number(callPricePerMinute) : 25,
+          profileImage: effectivePhoto,
+          alternateMobile: alternateMobile || null,
+          documents: {
+            aadhaarDocument: uploadedAadhaar,
+            panDocument: uploadedPan,
+            certificateDocument: uploadedCert,
+            profilePhoto: effectivePhoto,
+          },
+          kyc: {
+            aadhaarFrontImage: uploadedAadhaar,
+            panCardImage: uploadedPan,
+            status: "pending",
+          },
+          isProfileSubmitted: isSubmitted,
+          submissionStatus: isSubmitted ? "submitted" : "not_submitted",
+          verificationStatus: "pending",
+        });
+      }
     }
 
     // Clear verification record after successful registration
