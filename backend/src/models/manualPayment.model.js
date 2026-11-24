@@ -20,6 +20,12 @@ const manualPaymentSchema = new mongoose.Schema(
       default: null,
     },
 
+    senderEmail: {
+      type: String,
+      trim: true,
+      default: null,
+    },
+
     qrId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "PaymentQr",
@@ -46,8 +52,7 @@ const manualPaymentSchema = new mongoose.Schema(
 
     amount: {
       type: Number,
-      required: true,
-      min: 1,
+      default: 0,
     },
 
     utrNumber: {
@@ -64,7 +69,12 @@ const manualPaymentSchema = new mongoose.Schema(
 
     screenshotImage: {
       type: String,
-      required: true, // Uploaded payment screenshot URL
+      default: null, // Primary screenshot
+    },
+
+    screenshots: {
+      type: [String],
+      default: [], // Multiple screenshot images
     },
 
     purpose: {

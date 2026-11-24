@@ -8,11 +8,35 @@ const getFullUrl = (req, relativePath) => {
     return relativePath;
   }
   const host = req.get("host");
-  const protocol = req.protocol === "https" || req.secure || req.headers["x-forwarded-proto"] === "https" ? "https" : "http";
+  const protocol =
+    req.protocol === "https" || req.secure || req.headers["x-forwarded-proto"] === "https"
+      ? "https"
+      : "http";
   return `${protocol}://${host}${relativePath}`;
 };
 
-// 1. Submit Payment Receipt Screenshot (User)
+// Helper to format consistent payment object with full URLs
+const formatPayment = (req, payment) => {
+  if (!payment) return null;
+  const obj = payment.toObject ? payment.toObject() : payment;
+  const primaryScreenshot = obj.screenshotImage || (obj.screenshots && obj.screenshots[0]) || null;
+  const screenshots =
+    obj.screenshots && obj.screenshots.length > 0
+      ? obj.screenshots
+      : primaryScreenshot
+      ? [primaryScreenshot]
+      : [];
+
+  return {
+    ...obj,
+    screenshotImage: primaryScreenshot,
+    screenshots,
+    fullScreenshotUrl: getFullUrl(req, primaryScreenshot),
+    fullScreenshotUrls: screenshots.map((s) => getFullUrl(req, s)),
+  };
+};
+
+// 1. Submit Payment Receipt Screenshot (User - Token Required, Only Images Required)
 const submitPaymentReceipt = async (req, res) => {
   try {
     const {
@@ -25,58 +49,65 @@ const submitPaymentReceipt = async (req, res) => {
       appointmentId,
       purpose = "consultation",
       notes,
-      senderName,
-      senderMobile,
     } = req.body;
 
-    // Check screenshot file
-    if (!req.file && !req.body.screenshotImage) {
+    // Collect all uploaded screenshot files (supports single or multiple images)
+    let uploadedUrls = [];
+    if (req.files && Array.isArray(req.files) && req.files.length > 0) {
+      uploadedUrls = req.files.map((f) => `/uploads/payments/${f.filename}`);
+    } else if (req.file) {
+      uploadedUrls.push(`/uploads/payments/${req.file.filename}`);
+    } else if (req.body.screenshotImage) {
+      uploadedUrls.push(req.body.screenshotImage);
+    } else if (req.body.screenshots) {
+      const parsed = Array.isArray(req.body.screenshots) ? req.body.screenshots : [req.body.screenshots];
+      uploadedUrls.push(...parsed);
+    }
+
+    if (uploadedUrls.length === 0) {
       return res.status(400).json({
         success: false,
-        message: "Payment receipt screenshot is required (form-data field: 'screenshot')",
+        message: "Payment receipt screenshot image is required in form-data (field: 'screenshot' or 'screenshots')",
       });
     }
 
-    if (!amount || Number(amount) <= 0) {
-      return res.status(400).json({
+    // Must be authenticated user from Token
+    if (!req.user) {
+      return res.status(401).json({
         success: false,
-        message: "A valid payment amount is required",
+        message: "Authorization token is required to submit payment receipt",
       });
     }
 
-    const screenshotUrl = req.file
-      ? `/uploads/payments/${req.file.filename}`
-      : req.body.screenshotImage;
-
-    // Extract user info if authenticated
-    const userId = req.user ? req.user._id : req.body.userId || null;
-    const effectiveSenderName = senderName || (req.user ? req.user.fullName : "User");
-    const effectiveSenderMobile = senderMobile || (req.user ? req.user.mobile : null);
+    // Auto-populate all user details from the token
+    const userId = req.user._id;
+    const effectiveSenderName = req.user.fullName || "User";
+    const effectiveSenderMobile = req.user.mobile || null;
+    const effectiveSenderEmail = req.user.email || null;
 
     const payment = await ManualPayment.create({
       userId,
       senderName: effectiveSenderName,
       senderMobile: effectiveSenderMobile,
+      senderEmail: effectiveSenderEmail,
       qrId: qrId || null,
       astrologerId: astrologerId || null,
       orderId: orderId || null,
       appointmentId: appointmentId || null,
-      amount: Number(amount),
+      amount: amount !== undefined && !isNaN(Number(amount)) ? Number(amount) : 0,
       utrNumber: utrNumber ? utrNumber.trim() : null,
-      paymentMethod: paymentMethod.trim(),
-      screenshotImage: screenshotUrl,
-      purpose,
+      paymentMethod: (paymentMethod || "UPI").trim(),
+      screenshotImage: uploadedUrls[0],
+      screenshots: uploadedUrls,
+      purpose: purpose || "consultation",
       notes: notes ? notes.trim() : null,
       status: "pending",
     });
 
     return res.status(201).json({
       success: true,
-      message: "Payment screenshot submitted successfully. Admin/Astrologer will verify shortly.",
-      data: {
-        ...payment.toObject(),
-        fullScreenshotUrl: getFullUrl(req, payment.screenshotImage),
-      },
+      message: "Payment screenshot(s) submitted successfully. Admin/Astrologer will verify shortly.",
+      data: formatPayment(req, payment),
     });
   } catch (error) {
     console.error("Submit Payment Receipt Error:", error);
@@ -98,10 +129,7 @@ const getMyPayments = async (req, res) => {
       .populate("astrologerId", "displayName professionalTitle profileImage")
       .sort({ createdAt: -1 });
 
-    const formatted = payments.map((p) => ({
-      ...p.toObject(),
-      fullScreenshotUrl: getFullUrl(req, p.screenshotImage),
-    }));
+    const formatted = payments.map((p) => formatPayment(req, p));
 
     return res.status(200).json({
       success: true,
@@ -136,10 +164,7 @@ const getAllPayments = async (req, res) => {
       .populate("verifiedBy", "fullName role")
       .sort({ createdAt: -1 });
 
-    const formatted = payments.map((p) => ({
-      ...p.toObject(),
-      fullScreenshotUrl: getFullUrl(req, p.screenshotImage),
-    }));
+    const formatted = payments.map((p) => formatPayment(req, p));
 
     return res.status(200).json({
       success: true,
@@ -176,10 +201,7 @@ const getPaymentById = async (req, res) => {
 
     return res.status(200).json({
       success: true,
-      data: {
-        ...payment.toObject(),
-        fullScreenshotUrl: getFullUrl(req, payment.screenshotImage),
-      },
+      data: formatPayment(req, payment),
     });
   } catch (error) {
     console.error("Get Payment By ID Error:", error);
@@ -222,10 +244,7 @@ const updatePaymentStatus = async (req, res) => {
     return res.status(200).json({
       success: true,
       message: `Payment has been ${status} successfully`,
-      data: {
-        ...payment.toObject(),
-        fullScreenshotUrl: getFullUrl(req, payment.screenshotImage),
-      },
+      data: formatPayment(req, payment),
     });
   } catch (error) {
     console.error("Update Payment Status Error:", error);

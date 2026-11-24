@@ -29,8 +29,8 @@ const optionalAuth = async (req, res, next) => {
   next();
 };
 
-// 1. Submit Payment Receipt Screenshot (User)
-router.post("/submit", optionalAuth, uploadPaymentReceipt.single("screenshot"), submitPaymentReceipt);
+// 1. Submit Payment Receipt Screenshot (User - Token Required)
+router.post("/submit", authenticate, uploadPaymentReceipt.any(), submitPaymentReceipt);
 
 // 2. Get User's Own Payment Submissions (User)
 router.get("/my-payments", authenticate, getMyPayments);
