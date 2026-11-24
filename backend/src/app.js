@@ -11,6 +11,8 @@ const productRoutes = require("./routes/product.routes");
 const orderRoutes = require("./routes/order.routes");
 const consultationRoutes = require("./routes/consultation.routes");
 const cartRoutes = require("./routes/cart.routes");
+const paymentQrRoutes = require("./routes/paymentQr.routes");
+const manualPaymentRoutes = require("./routes/manualPayment.routes");
 
 const app = express();
 
@@ -30,6 +32,8 @@ app.use("/api/products", productRoutes);
 app.use("/api/orders", orderRoutes);
 app.use("/api/consultations", consultationRoutes);
 app.use("/api/cart", cartRoutes);
+app.use("/api/payment-qr", paymentQrRoutes);
+app.use("/api/manual-payments", manualPaymentRoutes);
 
 app.get("/", (req, res) => {
   res.json({

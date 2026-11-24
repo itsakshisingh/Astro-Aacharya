@@ -13,11 +13,15 @@ const profilesDir = path.join(__dirname, "../../uploads/profiles");
 const productsDir = path.join(__dirname, "../../uploads/products");
 const certificatesDir = path.join(__dirname, "../../uploads/certificates");
 const kycDir = path.join(__dirname, "../../uploads/kyc");
+const qrDir = path.join(__dirname, "../../uploads/qr");
+const paymentsDir = path.join(__dirname, "../../uploads/payments");
 
 ensureDirExists(profilesDir);
 ensureDirExists(productsDir);
 ensureDirExists(certificatesDir);
 ensureDirExists(kycDir);
+ensureDirExists(qrDir);
+ensureDirExists(paymentsDir);
 
 // Flexible & Resilient File Filter (Images Only)
 const fileFilter = (req, file, cb) => {
@@ -145,10 +149,48 @@ const uploadAstrologerDocs = multer({
   fileFilter: kycFilter, // Allows images and PDFs
 });
 
+// Storage for Payment QR Codes (Uploaded by Admin or Astrologer)
+const qrStorage = multer.diskStorage({
+  destination: (req, file, cb) => {
+    cb(null, qrDir);
+  },
+  filename: (req, file, cb) => {
+    const uniqueSuffix = Date.now() + "-" + Math.round(Math.random() * 1e9);
+    const ext = path.extname(file.originalname).toLowerCase() || ".png";
+    cb(null, `qr-${uniqueSuffix}${ext}`);
+  },
+});
+
+const uploadPaymentQr = multer({
+  storage: qrStorage,
+  limits: { fileSize: 10 * 1024 * 1024 }, // 10 MB limit
+  fileFilter: fileFilter,
+});
+
+// Storage for User Payment Screenshot / Receipts
+const paymentReceiptStorage = multer.diskStorage({
+  destination: (req, file, cb) => {
+    cb(null, paymentsDir);
+  },
+  filename: (req, file, cb) => {
+    const uniqueSuffix = Date.now() + "-" + Math.round(Math.random() * 1e9);
+    const ext = path.extname(file.originalname).toLowerCase() || ".jpg";
+    cb(null, `payment-${uniqueSuffix}${ext}`);
+  },
+});
+
+const uploadPaymentReceipt = multer({
+  storage: paymentReceiptStorage,
+  limits: { fileSize: 15 * 1024 * 1024 }, // 15 MB limit
+  fileFilter: fileFilter,
+});
+
 module.exports = {
   uploadProfile,
   uploadProduct,
   uploadCertificate,
   uploadKYCDocument,
   uploadAstrologerDocs,
+  uploadPaymentQr,
+  uploadPaymentReceipt,
 };
