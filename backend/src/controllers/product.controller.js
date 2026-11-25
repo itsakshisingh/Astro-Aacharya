@@ -20,15 +20,17 @@ const createProduct = async (req, res) => {
       createdBy,
     } = req.body;
 
-    if (!name || !category || originalPrice === undefined || sellingPrice === undefined || !createdBy) {
+    const effectiveCreatedBy = req.user ? req.user._id : createdBy;
+
+    if (!name || !category || originalPrice === undefined || sellingPrice === undefined || !effectiveCreatedBy) {
       return res.status(400).json({
         success: false,
-        message: "Please fill in required fields: name, category, originalPrice, sellingPrice, createdBy",
+        message: "Please fill in required fields: name, category, originalPrice, sellingPrice, createdBy (or send Authorization Bearer token)",
       });
     }
 
     // Verify creator user role
-    const creatorUser = await User.findById(createdBy);
+    const creatorUser = req.user || await User.findById(effectiveCreatedBy);
     if (!creatorUser) {
       return res.status(404).json({
         success: false,

@@ -13,6 +13,7 @@
 6. [Consultation History & Chat Details](#6-consultation-history--chat-details)
 7. [Astrologer Payment QR & Receipt Verification](#7-astrologer-payment-qr--receipt-verification)
 8. [Admin Approval & KYC Verification](#8-admin-approval--kyc-verification)
+9. [Astrologer Product Management (Add, View, Update, Delete)](#9-astrologer-product-management-add-view-update-delete)
 
 ---
 
@@ -421,3 +422,100 @@ curl --location --request PATCH 'https://astrobackend.bhoomitechzone.shop/api/as
     "rejectionReason": null
 }'
 ```
+
+---
+
+## 9. Astrologer Product Management (Add, View, Update, Delete)
+
+Astrologers can post their own spiritual and astrology products (e.g., Rudraksha, Gemstones, Yantra, Puja kits, energized malas) directly to the website store.
+
+### 9.1 Astrologer Adds a New Product (`multipart/form-data`)
+> **URL:** `POST https://astrobackend.bhoomitechzone.shop/api/products`  
+> **Headers:** `Authorization: Bearer <ASTROLOGER_TOKEN>` *(optional if `createdBy` is passed in form-data)*
+
+```bash
+curl --location 'https://astrobackend.bhoomitechzone.shop/api/products' \
+--header 'Authorization: Bearer ASTROLOGER_JWT_TOKEN' \
+--form 'name="Original 5 Mukhi Nepali Rudraksha Mala"' \
+--form 'category="Rudraksha & Malas"' \
+--form 'type="Energized Mala"' \
+--form 'originalPrice="1999"' \
+--form 'sellingPrice="999"' \
+--form 'stock="50"' \
+--form 'badge="Vedic Energized"' \
+--form 'shortDescription="Certified 108+1 beads Nepali 5 Mukhi Rudraksha Mala for peace and health."' \
+--form 'description="This authentic 5 Mukhi Rudraksha Mala has been personally energized through Vedic mantras by Acharya Dev Sharma. Ideal for meditation, chanting, and removing negative energies."' \
+--form 'images=@"/path/to/product-image-1.jpg"' \
+--form 'images=@"/path/to/product-image-2.jpg"' \
+--form 'createdBy="ASTROLOGER_USER_ID"'
+```
+
+**Response (Sample):**
+```json
+{
+  "success": true,
+  "message": "Product created successfully!",
+  "data": {
+    "_id": "6742fb123...",
+    "name": "Original 5 Mukhi Nepali Rudraksha Mala",
+    "slug": "original-5-mukhi-nepali-rudraksha-mala",
+    "category": "Rudraksha & Malas",
+    "originalPrice": 1999,
+    "sellingPrice": 999,
+    "discountPercentage": 50,
+    "stock": 50,
+    "badge": "Vedic Energized",
+    "images": [
+      "/uploads/products/product-17955...jpg",
+      "/uploads/products/product-17956...jpg"
+    ],
+    "isActive": true,
+    "createdBy": "ASTROLOGER_USER_ID"
+  }
+}
+```
+
+---
+
+### 9.2 Get All Products Added by this Astrologer
+Astrologer dashboard uses this to display all products listed by them.
+
+> **URL:** `GET https://astrobackend.bhoomitechzone.shop/api/products/creator/:userId`
+
+```bash
+curl --location 'https://astrobackend.bhoomitechzone.shop/api/products/creator/ASTROLOGER_USER_ID'
+```
+
+---
+
+### 9.3 Get Single Product Details by ID or Slug
+> **URL:** `GET https://astrobackend.bhoomitechzone.shop/api/products/:idOrSlug`
+
+```bash
+curl --location 'https://astrobackend.bhoomitechzone.shop/api/products/6742fb123...'
+```
+
+---
+
+### 9.4 Update Product Details or Images (`multipart/form-data`)
+> **URL:** `PUT https://astrobackend.bhoomitechzone.shop/api/products/:id`
+
+```bash
+curl --location --request PUT 'https://astrobackend.bhoomitechzone.shop/api/products/PRODUCT_ID' \
+--header 'Authorization: Bearer ASTROLOGER_JWT_TOKEN' \
+--form 'name="Original 5 Mukhi Nepali Rudraksha Mala (Updated)"' \
+--form 'sellingPrice="899"' \
+--form 'stock="45"' \
+--form 'images=@"/path/to/new-image.jpg"'
+```
+
+---
+
+### 9.5 Delete Product
+> **URL:** `DELETE https://astrobackend.bhoomitechzone.shop/api/products/:id`
+
+```bash
+curl --location --request DELETE 'https://astrobackend.bhoomitechzone.shop/api/products/PRODUCT_ID' \
+--header 'Authorization: Bearer ASTROLOGER_JWT_TOKEN'
+```
+

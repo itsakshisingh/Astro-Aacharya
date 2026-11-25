@@ -317,6 +317,80 @@
 					}
 				}
 			]
+		},
+		{
+			"name": "7. Astrologer Products",
+			"item": [
+				{
+					"name": "7.1 Astrologer Adds Product (Form-Data)",
+					"request": {
+						"method": "POST",
+						"header": [
+							{ "key": "Authorization", "value": "Bearer {{astrologerToken}}" }
+						],
+						"body": {
+							"mode": "formdata",
+							"formdata": [
+								{ "key": "name", "value": "Original 5 Mukhi Nepali Rudraksha Mala", "type": "text" },
+								{ "key": "category", "value": "Rudraksha & Malas", "type": "text" },
+								{ "key": "type", "value": "Energized Mala", "type": "text" },
+								{ "key": "originalPrice", "value": "1999", "type": "text" },
+								{ "key": "sellingPrice", "value": "999", "type": "text" },
+								{ "key": "stock", "value": "50", "type": "text" },
+								{ "key": "badge", "value": "Vedic Energized", "type": "text" },
+								{ "key": "shortDescription", "value": "Certified 108+1 beads Nepali 5 Mukhi Rudraksha Mala.", "type": "text" },
+								{ "key": "description", "value": "This authentic 5 Mukhi Rudraksha Mala has been personally energized through Vedic mantras.", "type": "text" },
+								{ "key": "createdBy", "value": "{{astrologerUserId}}", "type": "text" },
+								{ "key": "images", "type": "file", "src": "" }
+							]
+						},
+						"url": "https://astrobackend.bhoomitechzone.shop/api/products"
+					}
+				},
+				{
+					"name": "7.2 Get Products Added by this Astrologer",
+					"request": {
+						"method": "GET",
+						"url": "https://astrobackend.bhoomitechzone.shop/api/products/creator/{{astrologerUserId}}"
+					}
+				},
+				{
+					"name": "7.3 Get Single Product Details",
+					"request": {
+						"method": "GET",
+						"url": "https://astrobackend.bhoomitechzone.shop/api/products/{{productId}}"
+					}
+				},
+				{
+					"name": "7.4 Update Product (Form-Data)",
+					"request": {
+						"method": "PUT",
+						"header": [
+							{ "key": "Authorization", "value": "Bearer {{astrologerToken}}" }
+						],
+						"body": {
+							"mode": "formdata",
+							"formdata": [
+								{ "key": "name", "value": "Original 5 Mukhi Nepali Rudraksha Mala (Updated)", "type": "text" },
+								{ "key": "sellingPrice", "value": "899", "type": "text" },
+								{ "key": "stock", "value": "40", "type": "text" },
+								{ "key": "images", "type": "file", "src": "" }
+							]
+						},
+						"url": "https://astrobackend.bhoomitechzone.shop/api/products/{{productId}}"
+					}
+				},
+				{
+					"name": "7.5 Delete Product",
+					"request": {
+						"method": "DELETE",
+						"header": [
+							{ "key": "Authorization", "value": "Bearer {{astrologerToken}}" }
+						],
+						"url": "https://astrobackend.bhoomitechzone.shop/api/products/{{productId}}"
+					}
+				}
+			]
 		}
 	]
 }
