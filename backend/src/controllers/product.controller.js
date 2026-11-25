@@ -90,10 +90,15 @@ const createProduct = async (req, res) => {
 
     await product.save();
 
+    const populatedProduct = await Product.findById(product._id).populate(
+      "createdBy",
+      "fullName email role profileImage"
+    );
+
     return res.status(201).json({
       success: true,
       message: "Product created successfully!",
-      data: product,
+      data: populatedProduct || product,
     });
   } catch (error) {
     console.error("Create Product Error:", error);
