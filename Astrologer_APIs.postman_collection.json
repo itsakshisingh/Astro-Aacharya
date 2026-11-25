@@ -1,0 +1,322 @@
+{
+	"info": {
+		"_postman_id": "jyotara-astrologer-apis-v1",
+		"name": "Jyotara - Astrologer Website APIs",
+		"description": "Complete collection of Astrologer APIs for Website & App Integration on https://astrobackend.bhoomitechzone.shop",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+	},
+	"item": [
+		{
+			"name": "1. Authentication & Registration",
+			"item": [
+				{
+					"name": "1.1 Send OTP to Mobile",
+					"request": {
+						"method": "POST",
+						"header": [
+							{ "key": "Content-Type", "value": "application/json" }
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"mobile\": \"9876543210\",\n    \"countryCode\": \"+91\"\n}"
+						},
+						"url": "https://astrobackend.bhoomitechzone.shop/api/auth/send-otp"
+					}
+				},
+				{
+					"name": "1.2 Verify Mobile OTP",
+					"request": {
+						"method": "POST",
+						"header": [
+							{ "key": "Content-Type", "value": "application/json" }
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"mobile\": \"9876543210\",\n    \"otp\": \"1234\"\n}"
+						},
+						"url": "https://astrobackend.bhoomitechzone.shop/api/auth/verify-otp"
+					}
+				},
+				{
+					"name": "1.3 Astrologer Registration (Form-Data)",
+					"request": {
+						"method": "POST",
+						"body": {
+							"mode": "formdata",
+							"formdata": [
+								{ "key": "fullName", "value": "Acharya Dev Sharma", "type": "text" },
+								{ "key": "mobile", "value": "9876543210", "type": "text" },
+								{ "key": "countryCode", "value": "+91", "type": "text" },
+								{ "key": "email", "value": "acharyadev@gmail.com", "type": "text" },
+								{ "key": "gender", "value": "male", "type": "text" },
+								{ "key": "password", "value": "Password@123", "type": "text" },
+								{ "key": "confirmPassword", "value": "Password@123", "type": "text" },
+								{ "key": "role", "value": "astrologer", "type": "text" },
+								{ "key": "experience", "value": "8", "type": "text" },
+								{ "key": "skills", "value": "Vedic,Numerology,Vastu,Prashna", "type": "text" },
+								{ "key": "languages", "value": "Hindi,English,Sanskrit", "type": "text" },
+								{ "key": "chatPricePerMinute", "value": "20", "type": "text" },
+								{ "key": "callPricePerMinute", "value": "25", "type": "text" },
+								{ "key": "bio", "value": "Certified Vedic Astrologer with 8+ years of experience.", "type": "text" },
+								{ "key": "profileImage", "type": "file", "src": "" },
+								{ "key": "aadhaarDocument", "type": "file", "src": "" },
+								{ "key": "panDocument", "type": "file", "src": "" },
+								{ "key": "certificateDocument", "type": "file", "src": "" }
+							]
+						},
+						"url": "https://astrobackend.bhoomitechzone.shop/api/auth/register"
+					}
+				},
+				{
+					"name": "1.4 Astrologer Login",
+					"request": {
+						"method": "POST",
+						"header": [
+							{ "key": "Content-Type", "value": "application/json" }
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"identifier\": \"9876543210\",\n    \"password\": \"Password@123\"\n}"
+						},
+						"url": "https://astrobackend.bhoomitechzone.shop/api/auth/login"
+					}
+				}
+			]
+		},
+		{
+			"name": "2. Astrologer Profile & KYC",
+			"item": [
+				{
+					"name": "2.1 Get Astrologer Profile",
+					"request": {
+						"method": "GET",
+						"url": "https://astrobackend.bhoomitechzone.shop/api/astrologer/profile/{{userId}}"
+					}
+				},
+				{
+					"name": "2.2 Update Astrologer Profile (Form-Data)",
+					"request": {
+						"method": "PUT",
+						"body": {
+							"mode": "formdata",
+							"formdata": [
+								{ "key": "displayName", "value": "Acharya Dev Sharma", "type": "text" },
+								{ "key": "professionalTitle", "value": "Senior Vedic & Vastu Expert", "type": "text" },
+								{ "key": "experience", "value": "10", "type": "text" },
+								{ "key": "chatPricePerMinute", "value": "25", "type": "text" },
+								{ "key": "callPricePerMinute", "value": "30", "type": "text" },
+								{ "key": "skills", "value": "Vedic,KP Astrology,Numerology,Vastu", "type": "text" },
+								{ "key": "languages", "value": "Hindi,English,Gujarati", "type": "text" },
+								{ "key": "bio", "value": "Over 10 years experience helping clients in Career & Marriage.", "type": "text" },
+								{ "key": "profileImage", "type": "file", "src": "" },
+								{ "key": "aadhaarDocument", "type": "file", "src": "" },
+								{ "key": "panDocument", "type": "file", "src": "" },
+								{ "key": "certificateDocument", "type": "file", "src": "" }
+							]
+						},
+						"url": "https://astrobackend.bhoomitechzone.shop/api/astrologer/profile/{{userId}}"
+					}
+				},
+				{
+					"name": "2.3 Update Bank & Payout Details",
+					"request": {
+						"method": "PUT",
+						"header": [
+							{ "key": "Content-Type", "value": "application/json" }
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"accountHolderName\": \"Dev Sharma\",\n    \"accountNumber\": \"987654321012\",\n    \"ifscCode\": \"SBIN0001234\",\n    \"bankName\": \"State Bank of India\",\n    \"branchName\": \"Varanasi Main Branch\",\n    \"upiId\": \"acharyadev@oksbi\"\n}"
+						},
+						"url": "https://astrobackend.bhoomitechzone.shop/api/astrologer/bank-details/{{userId}}"
+					}
+				},
+				{
+					"name": "2.4 Submit KYC Details",
+					"request": {
+						"method": "PUT",
+						"body": {
+							"mode": "formdata",
+							"formdata": [
+								{ "key": "aadhaarNumber", "value": "123456789012", "type": "text" },
+								{ "key": "panNumber", "value": "ABCDE1234F", "type": "text" },
+								{ "key": "aadhaarFrontImage", "type": "file", "src": "" },
+								{ "key": "panCardImage", "type": "file", "src": "" }
+							]
+						},
+						"url": "https://astrobackend.bhoomitechzone.shop/api/astrologer/kyc/{{userId}}"
+					}
+				}
+			]
+		},
+		{
+			"name": "3. Public Listing & Presence",
+			"item": [
+				{
+					"name": "3.1 Public Astrologers List (User App)",
+					"request": {
+						"method": "GET",
+						"url": "https://astrobackend.bhoomitechzone.shop/api/astrologer/public"
+					}
+				},
+				{
+					"name": "3.2 Live Astrologers Presence Status",
+					"request": {
+						"method": "GET",
+						"url": "https://astrobackend.bhoomitechzone.shop/api/consultations/live-astrologers"
+					}
+				}
+			]
+		},
+		{
+			"name": "4. Appointments",
+			"item": [
+				{
+					"name": "4.1 Book Appointment (User)",
+					"request": {
+						"method": "POST",
+						"header": [
+							{ "key": "Content-Type", "value": "application/json" }
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"userId\": \"{{userId}}\",\n    \"astrologerId\": \"{{astrologerUserId}}\",\n    \"appointmentDate\": \"2026-11-28\",\n    \"timeSlot\": \"04:00 PM - 04:30 PM\",\n    \"consultationMode\": \"chat\",\n    \"notes\": \"Career guidance\"\n}"
+						},
+						"url": "https://astrobackend.bhoomitechzone.shop/api/appointments/book"
+					}
+				},
+				{
+					"name": "4.2 Get Astrologer's Appointments",
+					"request": {
+						"method": "GET",
+						"url": "https://astrobackend.bhoomitechzone.shop/api/appointments/astrologer/{{astrologerUserId}}"
+					}
+				},
+				{
+					"name": "4.3 Get User's Appointments",
+					"request": {
+						"method": "GET",
+						"url": "https://astrobackend.bhoomitechzone.shop/api/appointments/user/{{userId}}"
+					}
+				},
+				{
+					"name": "4.4 Update Appointment Status",
+					"request": {
+						"method": "PATCH",
+						"header": [
+							{ "key": "Content-Type", "value": "application/json" }
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"status\": \"CONFIRMED\"\n}"
+						},
+						"url": "https://astrobackend.bhoomitechzone.shop/api/appointments/{{appointmentId}}/status"
+					}
+				}
+			]
+		},
+		{
+			"name": "5. QR & Payment Receipts",
+			"item": [
+				{
+					"name": "5.1 Upload Astrologer Payment QR",
+					"request": {
+						"method": "POST",
+						"body": {
+							"mode": "formdata",
+							"formdata": [
+								{ "key": "qrImage", "type": "file", "src": "" },
+								{ "key": "title", "value": "Pandit Ji UPI QR", "type": "text" },
+								{ "key": "upiId", "value": "acharyadev@oksbi", "type": "text" },
+								{ "key": "accountHolderName", "value": "Dev Sharma", "type": "text" },
+								{ "key": "role", "value": "astrologer", "type": "text" },
+								{ "key": "astrologerId", "value": "{{astrologerId}}", "type": "text" }
+							]
+						},
+						"url": "https://astrobackend.bhoomitechzone.shop/api/payment-qr"
+					}
+				},
+				{
+					"name": "5.2 Get Active QR",
+					"request": {
+						"method": "GET",
+						"url": "https://astrobackend.bhoomitechzone.shop/api/payment-qr/active?astrologerId={{astrologerId}}"
+					}
+				},
+				{
+					"name": "5.3 Submit Payment Screenshot (User)",
+					"request": {
+						"method": "POST",
+						"header": [
+							{ "key": "Authorization", "value": "Bearer {{userToken}}" }
+						],
+						"body": {
+							"mode": "formdata",
+							"formdata": [
+								{ "key": "screenshot", "type": "file", "src": "" },
+								{ "key": "amount", "value": "500", "type": "text" },
+								{ "key": "utrNumber", "value": "432109876543", "type": "text" },
+								{ "key": "astrologerId", "value": "{{astrologerId}}", "type": "text" }
+							]
+						},
+						"url": "https://astrobackend.bhoomitechzone.shop/api/manual-payments/submit"
+					}
+				},
+				{
+					"name": "5.4 Verify / Approve Payment",
+					"request": {
+						"method": "PATCH",
+						"header": [
+							{ "key": "Content-Type", "value": "application/json" }
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"status\": \"approved\",\n    \"adminRemarks\": \"Payment confirmed\"\n}"
+						},
+						"url": "https://astrobackend.bhoomitechzone.shop/api/manual-payments/{{paymentId}}/status"
+					}
+				}
+			]
+		},
+		{
+			"name": "6. Admin Approvals",
+			"item": [
+				{
+					"name": "6.1 Get Pending Astrologers",
+					"request": {
+						"method": "GET",
+						"url": "https://astrobackend.bhoomitechzone.shop/api/admin/astrologers/pending"
+					}
+				},
+				{
+					"name": "6.2 Approve Astrologer Account",
+					"request": {
+						"method": "PATCH",
+						"header": [
+							{ "key": "Content-Type", "value": "application/json" }
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"status\": \"active\"\n}"
+						},
+						"url": "https://astrobackend.bhoomitechzone.shop/api/admin/astrologers/{{userId}}/status"
+					}
+				},
+				{
+					"name": "6.3 Approve Astrologer KYC",
+					"request": {
+						"method": "PATCH",
+						"header": [
+							{ "key": "Content-Type", "value": "application/json" }
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"status\": \"verified\"\n}"
+						},
+						"url": "https://astrobackend.bhoomitechzone.shop/api/astrologer/kyc-status/{{userId}}"
+					}
+				}
+			]
+		}
+	]
+}
