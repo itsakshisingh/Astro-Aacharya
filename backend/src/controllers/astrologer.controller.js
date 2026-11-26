@@ -488,6 +488,91 @@ const verifyKYCStatus = async (req, res) => {
   }
 };
 
+// ─────────────────────────────────────────────────────────────────────────────
+// 7. Toggle Online / Offline (Astrologer clicks toggle button)
+// ─────────────────────────────────────────────────────────────────────────────
+const toggleOnlineStatus = async (req, res) => {
+  try {
+    const { userId } = req.params;
+    // Allow explicit status or just toggle
+    const { isOnline } = req.body;
+
+    const profile = await AstrologerProfile.findOne({
+      $or: [{ userId }, { _id: userId }],
+    });
+
+    if (!profile) {
+      return res.status(404).json({
+        success: false,
+        message: "Astrologer profile not found.",
+      });
+    }
+
+    // If isOnline is sent in body, use it; otherwise toggle current state
+    const newOnlineState =
+      isOnline !== undefined
+        ? isOnline === true || isOnline === "true"
+        : !(profile.availability?.isOnline || false);
+
+    const newStatus = newOnlineState ? "online" : "offline";
+
+    profile.availability = {
+      ...profile.availability,
+      isOnline: newOnlineState,
+      status: newStatus,
+    };
+
+    await profile.save();
+
+    return res.status(200).json({
+      success: true,
+      message: `Astrologer is now ${newStatus}.`,
+      data: {
+        isOnline: newOnlineState,
+        status: newStatus,
+      },
+    });
+  } catch (error) {
+    console.error("Toggle Online Status Error:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to toggle online status.",
+      error: error.message,
+    });
+  }
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 8. Get Only ONLINE Astrologers (For User Panel — only online dikhenge)
+// ─────────────────────────────────────────────────────────────────────────────
+const getOnlineAstrologers = async (req, res) => {
+  try {
+    const astrologers = await AstrologerProfile.find({
+      "availability.isOnline": true,
+      "availability.status": "online",
+      isActive: true,
+    }).populate("userId", "fullName email mobile gender profileImage status role");
+
+    // Filter out blocked/rejected users
+    const filtered = astrologers.filter(
+      (a) => a.userId && a.userId.status === "active"
+    );
+
+    return res.status(200).json({
+      success: true,
+      count: filtered.length,
+      data: filtered,
+    });
+  } catch (error) {
+    console.error("Get Online Astrologers Error:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to fetch online astrologers.",
+      error: error.message,
+    });
+  }
+};
+
 module.exports = {
   getAstrologerProfile,
   updateAstrologerProfile,
@@ -495,4 +580,6 @@ module.exports = {
   submitKYC,
   updateBankDetails,
   verifyKYCStatus,
+  toggleOnlineStatus,
+  getOnlineAstrologers,
 };

@@ -9,10 +9,21 @@ const {
   submitKYC,
   updateBankDetails,
   verifyKYCStatus,
+  toggleOnlineStatus,
+  getOnlineAstrologers,
 } = require("../controllers/astrologer.controller");
+
+const { authenticate } = require("../middleware/auth.middleware");
 
 // Public API: Get all active & verified astrologers
 router.get("/public", getPublicAstrologers);
+
+// Public API: Get ONLY online astrologers (for user panel)
+router.get("/online", getOnlineAstrologers);
+
+// Toggle Online/Offline (Astrologer only - requires auth)
+router.patch("/toggle-online/:userId", authenticate, toggleOnlineStatus);
+router.put("/toggle-online/:userId", authenticate, toggleOnlineStatus);
 
 // Get Profile by Astrologer User ID
 router.get("/profile/:userId", getAstrologerProfile);
