@@ -21,11 +21,42 @@ const chatSchema = new mongoose.Schema(
         ref: "User",
       },
     ],
+    // ─── Person this consultation is FOR ──────────────────────────────────────
+    // null = for the user themselves | ObjectId = for another added person
+    personId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Person",
+      default: null,
+    },
+
     // Chat session status
+    // pending = user requested, waiting for astrologer accept/reject
+    // active  = astrologer accepted, chat is live
+    // rejected= astrologer rejected this request
+    // closed  = session ended
     status: {
       type: String,
-      enum: ["active", "closed", "pending"],
-      default: "active",
+      enum: ["pending", "active", "rejected", "closed"],
+      default: "pending",
+    },
+
+    // Astrologer's response to the chat request
+    astrologerResponse: {
+      type: String,
+      enum: ["pending", "accepted", "rejected"],
+      default: "pending",
+    },
+
+    // Reason if astrologer rejects
+    rejectionReason: {
+      type: String,
+      default: null,
+    },
+
+    // When astrologer responded
+    respondedAt: {
+      type: Date,
+      default: null,
     },
     // Preview of last message
     lastMessage: {

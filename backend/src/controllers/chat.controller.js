@@ -2,14 +2,16 @@ const Chat = require("../models/chat.model");
 const Message = require("../models/message.model");
 const User = require("../models/user.model");
 const AstrologerProfile = require("../models/astrologerProfile.model");
+const Person = require("../models/person.model");
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 1. POST /api/chat/start  →  User starts (or resumes) chat with an astrologer
+// 1. POST /api/chat/start  →  User requests chat with an astrologer
+//    personId optional → consultation for another person (spouse etc.)
 // ─────────────────────────────────────────────────────────────────────────────
 const startChat = async (req, res) => {
   try {
     const userId = req.user._id;
-    const { astrologerId } = req.body;
+    const { astrologerId, personId } = req.body;
 
     if (!astrologerId) {
       return res.status(400).json({
@@ -35,27 +37,47 @@ const startChat = async (req, res) => {
       });
     }
 
-    // Find existing active chat OR create new one
-    let chat = await Chat.findOne({
+    // Validate personId if provided
+    let person = null;
+    if (personId) {
+      person = await Person.findOne({ _id: personId, userId });
+      if (!person) {
+        return res.status(404).json({
+          success: false,
+          message: "Person not found or does not belong to you.",
+        });
+      }
+    }
+
+    // Check for existing active/pending chat for same user+astrologer+person combo
+    const existingQuery = {
       userId,
       astrologerId,
-      status: { $ne: "closed" },
-    });
+      personId: personId || null,
+      status: { $in: ["active", "pending"] },
+    };
+    let chat = await Chat.findOne(existingQuery);
 
     if (!chat) {
+      // Create new chat in PENDING state → astrologer must accept
       chat = await Chat.create({
         userId,
         astrologerId,
+        personId: personId || null,
         participants: [userId, astrologerId],
-        status: "active",
+        status: "pending",
+        astrologerResponse: "pending",
       });
 
-      // Add a system message to mark session start
+      // System message
+      const forWhom = person
+        ? `for ${person.fullName} (${person.relation})`
+        : "for self";
       await Message.create({
         chatId: chat._id,
         senderId: userId,
         senderRole: req.user.role,
-        content: "Chat session started.",
+        content: `Chat request sent ${forWhom}. Waiting for astrologer to accept.`,
         messageType: "system",
       });
     }
@@ -64,11 +86,14 @@ const startChat = async (req, res) => {
     await chat.populate([
       { path: "userId", select: "fullName mobile profileImage role" },
       { path: "astrologerId", select: "fullName mobile profileImage role" },
+      { path: "personId", select: "fullName relation gender dob tob pob" },
     ]);
 
     return res.status(200).json({
       success: true,
-      message: "Chat session ready.",
+      message: chat.astrologerResponse === "pending"
+        ? "Chat request sent. Waiting for astrologer to accept."
+        : "Chat session ready.",
       data: chat,
     });
   } catch (error) {
@@ -510,6 +535,185 @@ const uploadChatImage = async (req, res) => {
   }
 };
 
+// ─────────────────────────────────────────────────────────────────────────────
+// 10. PATCH /api/chat/:chatId/accept  →  Astrologer accepts chat request
+// ─────────────────────────────────────────────────────────────────────────────
+const acceptChat = async (req, res) => {
+  try {
+    const { chatId } = req.params;
+    const astrologerId = req.user._id;
+    const role = req.user.role;
+
+    if (role !== "astrologer") {
+      return res.status(403).json({
+        success: false,
+        message: "Only astrologers can accept chat requests.",
+      });
+    }
+
+    const chat = await Chat.findById(chatId);
+    if (!chat) {
+      return res.status(404).json({ success: false, message: "Chat not found." });
+    }
+
+    if (chat.astrologerId.toString() !== astrologerId.toString()) {
+      return res.status(403).json({
+        success: false,
+        message: "This chat request is not for you.",
+      });
+    }
+
+    if (chat.astrologerResponse !== "pending") {
+      return res.status(400).json({
+        success: false,
+        message: `Chat is already ${chat.astrologerResponse}.`,
+      });
+    }
+
+    // Accept: status → active
+    chat.astrologerResponse = "accepted";
+    chat.status = "active";
+    chat.respondedAt = new Date();
+    await chat.save();
+
+    // System message
+    await Message.create({
+      chatId,
+      senderId: astrologerId,
+      senderRole: "astrologer",
+      content: "Astrologer has accepted your chat request. You can now send messages.",
+      messageType: "system",
+    });
+
+    await chat.populate([
+      { path: "userId", select: "fullName mobile profileImage" },
+      { path: "astrologerId", select: "fullName mobile profileImage" },
+      { path: "personId", select: "fullName relation gender dob tob pob" },
+    ]);
+
+    return res.status(200).json({
+      success: true,
+      message: "Chat request accepted. Session is now active.",
+      data: chat,
+    });
+  } catch (error) {
+    console.error("acceptChat error:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to accept chat.",
+      error: error.message,
+    });
+  }
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 11. PATCH /api/chat/:chatId/reject  →  Astrologer rejects chat request
+// ─────────────────────────────────────────────────────────────────────────────
+const rejectChat = async (req, res) => {
+  try {
+    const { chatId } = req.params;
+    const astrologerId = req.user._id;
+    const role = req.user.role;
+    const { reason } = req.body;
+
+    if (role !== "astrologer") {
+      return res.status(403).json({
+        success: false,
+        message: "Only astrologers can reject chat requests.",
+      });
+    }
+
+    const chat = await Chat.findById(chatId);
+    if (!chat) {
+      return res.status(404).json({ success: false, message: "Chat not found." });
+    }
+
+    if (chat.astrologerId.toString() !== astrologerId.toString()) {
+      return res.status(403).json({
+        success: false,
+        message: "This chat request is not for you.",
+      });
+    }
+
+    if (chat.astrologerResponse !== "pending") {
+      return res.status(400).json({
+        success: false,
+        message: `Chat is already ${chat.astrologerResponse}.`,
+      });
+    }
+
+    // Reject: status → rejected
+    chat.astrologerResponse = "rejected";
+    chat.status = "rejected";
+    chat.rejectionReason = reason || "Astrologer is currently unavailable.";
+    chat.respondedAt = new Date();
+    await chat.save();
+
+    // System message
+    await Message.create({
+      chatId,
+      senderId: astrologerId,
+      senderRole: "astrologer",
+      content: `Chat request declined. Reason: ${chat.rejectionReason}`,
+      messageType: "system",
+    });
+
+    return res.status(200).json({
+      success: true,
+      message: "Chat request rejected.",
+      data: {
+        chatId,
+        status: chat.status,
+        reason: chat.rejectionReason,
+      },
+    });
+  } catch (error) {
+    console.error("rejectChat error:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to reject chat.",
+      error: error.message,
+    });
+  }
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 12. GET /api/chat/pending-requests  →  Astrologer sees pending chat requests
+// ─────────────────────────────────────────────────────────────────────────────
+const getPendingRequests = async (req, res) => {
+  try {
+    const astrologerId = req.user._id;
+    const role = req.user.role;
+
+    if (role !== "astrologer" && role !== "super_admin") {
+      return res.status(403).json({ success: false, message: "Access denied." });
+    }
+
+    const query = role === "astrologer"
+      ? { astrologerId, astrologerResponse: "pending" }
+      : { astrologerResponse: "pending" };
+
+    const requests = await Chat.find(query)
+      .sort({ createdAt: -1 })
+      .populate("userId", "fullName mobile profileImage")
+      .populate("astrologerId", "fullName mobile profileImage")
+      .populate("personId", "fullName relation gender dob tob pob");
+
+    return res.status(200).json({
+      success: true,
+      count: requests.length,
+      data: requests,
+    });
+  } catch (error) {
+    console.error("getPendingRequests error:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to fetch pending requests.",
+      error: error.message,
+    });
+  }
+};
+
 module.exports = {
   startChat,
   getMyChats,
@@ -520,4 +724,7 @@ module.exports = {
   markAsRead,
   closeChat,
   uploadChatImage,
+  acceptChat,
+  rejectChat,
+  getPendingRequests,
 };
