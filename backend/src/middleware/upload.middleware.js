@@ -15,6 +15,7 @@ const certificatesDir = path.join(__dirname, "../../uploads/certificates");
 const kycDir = path.join(__dirname, "../../uploads/kyc");
 const qrDir = path.join(__dirname, "../../uploads/qr");
 const paymentsDir = path.join(__dirname, "../../uploads/payments");
+const chatsDir = path.join(__dirname, "../../uploads/chats");
 
 ensureDirExists(profilesDir);
 ensureDirExists(productsDir);
@@ -22,6 +23,7 @@ ensureDirExists(certificatesDir);
 ensureDirExists(kycDir);
 ensureDirExists(qrDir);
 ensureDirExists(paymentsDir);
+ensureDirExists(chatsDir);
 
 // Flexible & Resilient File Filter (Images Only)
 const fileFilter = (req, file, cb) => {
@@ -185,6 +187,24 @@ const uploadPaymentReceipt = multer({
   fileFilter: fileFilter,
 });
 
+// Storage for Chat Images (sent inside chat sessions)
+const chatImageStorage = multer.diskStorage({
+  destination: (req, file, cb) => {
+    cb(null, chatsDir);
+  },
+  filename: (req, file, cb) => {
+    const uniqueSuffix = Date.now() + "-" + Math.round(Math.random() * 1e9);
+    const ext = path.extname(file.originalname).toLowerCase() || ".jpg";
+    cb(null, `chat-${uniqueSuffix}${ext}`);
+  },
+});
+
+const uploadChatImage = multer({
+  storage: chatImageStorage,
+  limits: { fileSize: 10 * 1024 * 1024 }, // 10 MB limit
+  fileFilter: fileFilter,
+});
+
 module.exports = {
   uploadProfile,
   uploadProduct,
@@ -193,4 +213,5 @@ module.exports = {
   uploadAstrologerDocs,
   uploadPaymentQr,
   uploadPaymentReceipt,
+  uploadChatImage,
 };

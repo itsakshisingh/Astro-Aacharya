@@ -7,6 +7,7 @@ dotenv.config();
 const app = require("./src/app");
 const connectDB = require("./src/config/db");
 const { initConsultationSocket } = require("./src/socket/consultation.socket");
+const { initChatSocket } = require("./src/socket/chat.socket");
 
 const PORT = process.env.PORT || 5000;
 
@@ -20,8 +21,11 @@ const io = new Server(server, {
   },
 });
 
-// Setup Real-Time Consultation WebSocket handlers
+// Setup Real-Time Consultation WebSocket handlers (existing)
 initConsultationSocket(io);
+
+// Setup Real-Time Live Chat WebSocket handlers (new - uses /chat namespace)
+initChatSocket(io);
 
 const startServer = async () => {
   try {
