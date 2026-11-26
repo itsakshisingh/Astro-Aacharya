@@ -303,10 +303,18 @@ const getPublicAstrologers = async (req, res) => {
       );
     }
 
+    // Add isOnline field in response for frontend
+    const data = astrologers.map((a) => {
+      const obj = a.toObject();
+      obj.isOnline = a.availability?.isOnline || false;
+      obj.onlineStatus = a.availability?.status || "offline";
+      return obj;
+    });
+
     return res.status(200).json({
       success: true,
-      count: astrologers.length,
-      data: astrologers,
+      count: data.length,
+      data,
     });
   } catch (error) {
     console.error("Get Public Astrologers Error:", error);
